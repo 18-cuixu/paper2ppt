@@ -1,0 +1,5 @@
+interface:
+  display_name: "UAV Paper Report"
+  short_description: "Generate polished UAV/robotics paper report PPTs"
+  brand_color: "#0079C0"
+  default_prompt: "Use $uav-paper-report to turn this UAV/robotics paper into a polished style-matched thesis report PPT."

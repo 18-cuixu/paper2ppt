@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -136,6 +137,24 @@ def add_textbox(slide, left: float, top: float, width: float, height: float, *, 
     return shape
 
 
+def clean_inline_text(text: str, *, context: str) -> str:
+    if "\n" in text or "\r" in text:
+        raise ValueError(f"manual newline is not allowed in {context}")
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        raise ValueError(f"empty text is not allowed in {context}")
+    return cleaned
+
+
+def clean_formula_text(text: str) -> str:
+    if "\n" in text or "\r" in text:
+        raise ValueError("manual newline is not allowed in formula runs")
+    cleaned = re.sub(r"[ \t]+", " ", text)
+    if not cleaned.strip():
+        raise ValueError("empty formula run is not allowed")
+    return cleaned
+
+
 def add_plain(slide, text: str, left: float, top: float, width: float, height: float, size: float, *,
               name: str, bold: bool = False, color: RGBColor = BLACK, align=PP_ALIGN.LEFT) -> None:
     shape = add_textbox(slide, left, top, width, height, name=name)
@@ -146,8 +165,28 @@ def add_plain(slide, text: str, left: float, top: float, width: float, height: f
     p.space_after = Pt(0)
     p.line_spacing = 0.95
     run = p.add_run()
-    run.text = " ".join(text.split())
+    run.text = clean_inline_text(text, context=name)
     set_run(run, size, bold=bold, color=color)
+
+
+def set_baseline(run, value: int) -> None:
+    run._r.get_or_add_rPr().set("baseline", str(value))  # noqa: SLF001
+
+
+def add_math_run(paragraph, piece: str | tuple[str, str], size: float) -> None:
+    if isinstance(piece, tuple):
+        text, mode = piece
+    else:
+        text, mode = piece, ""
+    text = clean_formula_text(text)
+    run = paragraph.add_run()
+    run.text = text
+    run_size = size * 0.72 if mode in {"sub", "sup"} else size
+    set_run(run, run_size, color=BLACK)
+    if mode == "sub":
+        set_baseline(run, -25000)
+    elif mode == "sup":
+        set_baseline(run, 30000)
 
 
 def add_bullets(slide, lines: list[str], left: float, top: float, width: float, height: float, sizes: dict[str, float], *,
@@ -163,7 +202,12 @@ def add_bullets(slide, lines: list[str], left: float, top: float, width: float, 
         "最小间距",
         "覆盖率",
         "平滑",
-        "低",
+        "视觉惯性",
+        "事件相机",
+        "体素",
+        "通信",
+        "多智能体",
+        "优先级目标",
         "deterministic",
     )
 
@@ -194,10 +238,10 @@ def add_bullets(slide, lines: list[str], left: float, top: float, width: float, 
     shape = add_textbox(slide, left, top, width, height, name=name)
     tf = shape.text_frame
     tf.clear()
+    if not lines:
+        raise ValueError(f"empty bullet block is not allowed in {name}")
     for idx, raw in enumerate(lines):
-        line = " ".join(raw.split())
-        if not line:
-            continue
+        line = clean_inline_text(raw, context=name)
         marker = line.lstrip()[0]
         if marker == "●":
             size = sizes["main"]
@@ -247,7 +291,8 @@ def add_rect(slide, left: float, top: float, width: float, height: float, color:
 
 
 def add_rule(slide, left: float, top: float, width: float, accent: RGBColor) -> None:
-    add_rect(slide, left, top, width, 0.018, accent)
+    shape = add_rect(slide, left, top, width, 0.018, accent)
+    shape.name = "RULE"
 
 
 def add_header(slide, w: float, h: float, accent: RGBColor, part: str, title: str) -> None:
@@ -353,6 +398,7 @@ def add_table(slide, rows: list[list[str]], left: float, top: float, width: floa
     for ri, row in enumerate(rows):
         for ci, value in enumerate(row):
             cell = tbl.cell(ri, ci)
+            value = clean_inline_text(value, context="table cell")
             cell.text = value
             cell.margin_left = Inches(0.02)
             cell.margin_right = Inches(0.02)
@@ -369,11 +415,89 @@ def add_table(slide, rows: list[list[str]], left: float, top: float, width: floa
                 set_run(run, size, bold=ri == 0 or ci == 0 or value_is_key, color=RED if value_is_key else BLACK)
 
 
-def add_formula_rows(slide, rows: list[str], left: float, top: float, width: float, row_h: float, size: float, accent: RGBColor) -> None:
+FORMULA_SPECS: dict[str, list[list[str | tuple[str, str]]]] = {
+    "primitive-planner-2025": [
+        ["p(t) = p", ("0", "sub"), " + v", ("0", "sub"), "t + 1/2 a t", ("2", "sup")],
+        ["J(π) = T(π) + λ", ("c", "sub"), " C(π) + λ", ("s", "sub"), " S(π)"],
+        ["π", ("*", "sup"), " = arg min", ("π∈Pₛ", "sub"), " J(π)"],
+    ],
+    "safety-assurance-2025": [
+        ["u", ("s", "sub"), " = arg min", ("u", "sub"), " ||u - u", ("n", "sub"), "||", ("2", "sup")],
+        ["h(x) ≥ 0,    ḣ(x) + α h(x) ≥ 0"],
+        ["ẋ = f(x) + g(x)u", ("s", "sub")],
+    ],
+    "quad-lcd-2025": [
+        ["u = clip(π", ("θ", "sub"), "(x,r), u", ("min", "sub"), ", u", ("max", "sub"), ")"],
+        ["L = L", ("track", "sub"), " + λ", ("u", "sub"), "L", ("sat", "sub"), " + λ", ("s", "sub"), "L", ("smooth", "sub")],
+        ["e", ("t", "sub"), " = ||p", ("t", "sub"), " - p", ("ref", "sub"), "||", ("2", "sub"), ",    Δu", ("t", "sub"), " = ||u", ("t", "sub"), " - u", ("t-1", "sub"), "||", ("2", "sub")],
+    ],
+    "mc-swarm-2025": [
+        ["m", ("i", "sub"), " = arg max", ("m", "sub"), " q", ("m", "sub"), "(x", ("i", "sub"), ", X", ("N", "sub"), ", g)"],
+        ["d", ("ij", "sub"), " = ||p", ("i", "sub"), " - p", ("j", "sub"), "||", ("2", "sub"), " ≥ d", ("min", "sub")],
+        ["u", ("i", "sub"), " = u", ("i", "sub"), ("m", "sup"), " + k", ("s", "sub"), " ∇h", ("i", "sub"), "(x)"],
+    ],
+    "smooth-coverage-2025": [
+        ["min ", "Σ", ("i", "sub"), " (L", ("i", "sub"), " + λ", ("k", "sub"), "K", ("i", "sub"), " + λ", ("b", "sub"), "B", ("i", "sub"), ")"],
+        ["s.t.  ∪", ("i", "sub"), " C", ("i", "sub"), " = Ω,    C", ("i", "sub"), " ∩ C", ("j", "sub"), " = ∅"],
+        ["||p", ("i", "sub"), "(t) - p", ("j", "sub"), "(t)||", ("2", "sub"), " ≥ d", ("min", "sub")],
+    ],
+    "downfacing-vio-2025": [
+        ["T", ("k+1", "sub"), " = T", ("k", "sub"), " exp(ξ", ("k", "sub"), " Δt)"],
+        ["r", ("i", "sub"), " = z", ("i", "sub"), " - π(T", ("cw", "sub"), " P", ("i", "sub"), ")"],
+        ["E = Σ", ("i", "sub"), " ||r", ("i", "sub"), "||", ("2", "sup"), " + λ", ("b", "sub"), " ||b||", ("2", "sup")],
+    ],
+    "voxel-esvio-2025": [
+        ["p", ("v", "sub"), " = TopK(p | v, s(p))"],
+        ["E", ("map", "sub"), " = Σ", ("v", "sub"), " w", ("v", "sub"), " ||e", ("v", "sub"), "||", ("2", "sup")],
+        ["x", ("*", "sup"), " = arg min", ("x", "sub"), " (E", ("imu", "sub"), " + E", ("event", "sub"), " + E", ("stereo", "sub"), ")"],
+    ],
+    "persistent-monitoring-2025": [
+        ["a", ("i", "sub"), ("*", "sup"), " = arg max", ("a", "sub"), " Q", ("i", "sub"), "(o", ("i", "sub"), ", m", ("i", "sub"), ", a)"],
+        ["R", ("ij", "sub"), "(t) ≥ R", ("min", "sub"), ",    ||p", ("i", "sub"), " - p", ("j", "sub"), "|| ≤ d", ("comm", "sub")],
+        ["J = Σ", ("l", "sub"), " γ", ("l", "sub"), " q", ("l", "sub"), "(t) - λ", ("c", "sub"), " C", ("i", "sub"), "(t)"],
+    ],
+    "terrain-aware-uav-2025": [
+        ["z", ("k", "sub"), " = h(x", ("k", "sub"), ", y", ("k", "sub"), ") + d", ("safe", "sub")],
+        ["v", ("k", "sub"), " = Π(K, R", ("k", "sub"), ", t", ("k", "sub"), ", X)"],
+        ["J = Σ", ("k", "sub"), " (1 - cov(v", ("k", "sub"), ")) + λ", ("h", "sub"), "|Δz", ("k", "sub"), "| + λ", ("ψ", "sub"), "|Δψ", ("k", "sub"), "|"],
+    ],
+    "zoom-ptz-coverage-2025": [
+        ["GSD", ("k", "sub"), " = H", ("k", "sub"), " p / f", ("k", "sub")],
+        ["f", ("k", "sub"), ("*", "sup"), " = clip(H", ("k", "sub"), " p / GSD", ("0", "sub"), ", f", ("min", "sub"), ", f", ("max", "sub"), ")"],
+        ["J = T + λ", ("L", "sub"), " L + λ", ("z", "sub"), " Σ", ("k", "sub"), " |Δz", ("k", "sub"), "|"],
+    ],
+    "diff-physics-flight-2025": [
+        ["a", ("t", "sub"), " = π", ("θ", "sub"), "(D", ("t", "sub"), ", v", ("t", "sub"), ")"],
+        ["v", ("t+1", "sub"), " = v", ("t", "sub"), " + a", ("t", "sub"), " Δt"],
+        ["L = Σ", ("t", "sub"), " ℓ", ("obs", "sub"), "(p", ("t", "sub"), ") + λ", ("u", "sub"), " ||a", ("t", "sub"), "||", ("2", "sup")],
+    ],
+    "shape-adaptive-quad-2025": [
+        ["x", ("k+1", "sub"), " = f(x", ("k", "sub"), ", u", ("k", "sub"), ", η", ("k", "sub"), ")"],
+        ["J = Σ", ("k", "sub"), " ||p", ("k", "sub"), " - p", ("ref", "sub"), "||", ("2", "sup"), " + λ", ("η", "sub"), " ||Δη", ("k", "sub"), "||", ("2", "sup")],
+        ["η", ("*", "sup"), " = arg min", ("η", "sub"), " J", ("path", "sub"), "(x, η)"],
+    ],
+}
+
+
+def formula_rows_for(paper: dict[str, Any]) -> list[list[str | tuple[str, str]]]:
+    return FORMULA_SPECS.get(paper["id"], [[row] for row in paper["formula_rows"]])
+
+
+def add_formula_rows(slide, rows: list[list[str | tuple[str, str]]], left: float, top: float, width: float, row_h: float, size: float, accent: RGBColor) -> None:
     for idx, row in enumerate(rows):
         y = top + idx * row_h
-        add_plain(slide, f"({idx + 1})", left, y + 0.05, 0.44, 0.30, size - 2.2, name=f"MATH_LABEL_{idx}", color=GRAY, align=PP_ALIGN.RIGHT)
-        add_plain(slide, row, left + 0.62, y, width - 0.62, 0.34, size, name=f"MATH_BODY_{idx}", color=BLACK)
+        add_plain(slide, f"({idx + 1})", left, y + 0.04, 0.50, 0.32, size - 2.2, name=f"MATH_LABEL_{idx}", color=GRAY, align=PP_ALIGN.RIGHT)
+        shape = add_textbox(slide, left + 0.68, y, width - 0.68, 0.46, name=f"MATH_BODY_{idx}")
+        shape.text_frame.word_wrap = False
+        shape.text_frame.margin_left = Inches(0)
+        shape.text_frame.margin_right = Inches(0)
+        shape.text_frame.margin_top = Inches(0)
+        shape.text_frame.margin_bottom = Inches(0)
+        p = shape.text_frame.paragraphs[0]
+        p.space_after = Pt(0)
+        p.line_spacing = 1.0
+        for piece in row:
+            add_math_run(p, piece, size)
     add_rule(slide, left + 0.62, top + len(rows) * row_h + 0.08, width - 0.62, accent)
 
 
@@ -382,7 +506,8 @@ def metric_row(slide, items: list[list[str]], left: float, top: float, width: fl
     box_w = (width - gap * (len(items) - 1)) / len(items)
     for idx, item in enumerate(items):
         x = left + idx * (box_w + gap)
-        add_rect(slide, x, top, box_w, 0.64, RGBColor(248, 250, 253), line=MID_GRAY)
+        box = add_rect(slide, x, top, box_w, 0.64, RGBColor(248, 250, 253), line=MID_GRAY)
+        box.name = f"METRIC_BOX_{idx}"
         add_plain(slide, item[0], x + 0.08, top + 0.08, box_w - 0.16, 0.22, size, name=f"METRIC_VALUE_{idx}", bold=True, color=accent, align=PP_ALIGN.CENTER)
         add_plain(slide, item[1], x + 0.08, top + 0.36, box_w - 0.16, 0.18, 9.8, name=f"METRIC_LABEL_{idx}", color=GRAY, align=PP_ALIGN.CENTER)
 
@@ -432,16 +557,17 @@ def content_position(prs: Presentation, paper: dict[str, Any], accent: RGBColor,
     add_section(slide, w, 0.78, "1.1", "研究问题与核心思路", accent)
     body_top = 1.35
     if w < 11.0:
-        add_bullets(slide, ["● " + paper["problem"], "● " + paper["main_claim"]] + paper["bullets"][:3], 0.55, body_top, w - 1.1, 3.06, sizes, name="BODY_POSITION", space_after=1.0)
-        add_rule(slide, 0.60, 4.64, w - 1.20, accent)
-        add_table(slide, paper["comparison_rows_narrow"], 0.68, 4.84, w - 1.36, 0.88, 10.7, accent)
-        metric_row(slide, paper["metrics"], 0.65, h - 1.30, w - 1.30, accent, 15.2)
+        add_bullets(slide, ["● " + paper["problem"], "● " + paper["main_claim"]] + paper["bullets"][:2], 0.55, body_top, w - 1.1, 2.58, sizes, name="BODY_POSITION", space_after=0.78)
+        add_table(slide, paper["comparison_rows_narrow"], 0.68, 3.92, w - 1.36, 1.08, 10.7, accent)
+        add_bullets(slide, paper["position_notes"], 0.72, 5.18, w - 1.44, 0.64, sizes, name="BODY_POSITION_NOTE", space_after=0.0)
+        metric_row(slide, paper["metrics"], 0.65, h - 1.16, w - 1.30, accent, 15.2)
     else:
-        add_bullets(slide, ["● " + paper["problem"], "● " + paper["main_claim"]] + paper["bullets"][:3], 0.70, body_top, w * 0.55, 3.80, sizes, name="BODY_POSITION", space_after=1.1)
-        metric_row(slide, paper["metrics"], w * 0.62, body_top + 0.20, w * 0.32, accent, 16.0)
-        add_bullets(slide, paper["position_notes"], w * 0.62, body_top + 2.40, w * 0.32, 1.40, sizes, name="BODY_POSITION_SIDE", space_after=0.8)
-        add_rule(slide, 0.76, h - 1.58, w - 1.52, accent)
-        add_table(slide, paper["comparison_rows_wide"], 0.92, h - 1.32, w - 1.84, 0.84, 10.8, accent)
+        add_bullets(slide, ["● " + paper["problem"], "● " + paper["main_claim"]] + paper["bullets"][:2], 0.70, body_top, w * 0.54, 3.12, sizes, name="BODY_POSITION", space_after=0.82)
+        metric_row(slide, paper["metrics"], w * 0.61, body_top + 0.12, w * 0.33, accent, 16.0)
+        add_bullets(slide, paper["position_notes"], w * 0.61, body_top + 1.80, w * 0.33, 1.04, sizes, name="BODY_POSITION_SIDE", space_after=0.25)
+        add_rule(slide, 0.76, 4.48, w - 1.52, accent)
+        add_table(slide, paper["comparison_rows_wide"], 0.92, 4.72, w - 1.84, 1.28, 10.8, accent)
+        add_bullets(slide, paper["bullets"][2:3], 0.94, 6.20, w - 1.88, 0.44, sizes, name="BODY_POSITION_BOTTOM", space_after=0.0)
 
 
 def method_overview(prs: Presentation, paper: dict[str, Any], assets: dict[str, Path], accent: RGBColor, sizes: dict[str, float]) -> None:
@@ -489,18 +615,20 @@ def formula_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, si
     slide = add_blank_slide(prs)
     add_header(slide, w, h, accent, "Part. 02", "研究方法")
     add_section(slide, w, 0.78, "2.2", "约束与目标函数", accent)
+    formula_rows = formula_rows_for(paper)
     if w < 11.0:
-        add_formula_rows(slide, paper["formula_rows"], 0.74, 1.46, w - 1.45, 0.56, sizes["formula"], accent)
+        add_formula_rows(slide, formula_rows, 0.74, 1.38, w - 1.45, 0.58, sizes["formula"], accent)
         rows = [["符号", "含义"]] + paper["terms"][:4]
-        add_table(slide, rows, 0.70, 3.52, w - 1.40, 1.96, sizes["table"], accent)
-        add_bullets(slide, paper["formula_notes_narrow"], 0.70, 5.78, w - 1.40, 0.76, sizes, name="BODY_FORMULA_NOTE", space_after=0.0)
+        add_table(slide, rows, 0.70, 3.35, w - 1.40, 1.92, sizes["table"], accent)
+        add_bullets(slide, paper["formula_notes_narrow"] + paper["formula_notes_wide"][1:2], 0.72, 5.48, w - 1.44, 0.88, sizes, name="BODY_FORMULA_NOTE", space_after=0.15)
     else:
-        add_formula_rows(slide, paper["formula_rows"], 0.86, 1.54, w * 0.52, 0.62, sizes["formula"], accent)
+        add_formula_rows(slide, formula_rows, 0.86, 1.44, w * 0.54, 0.62, sizes["formula"], accent)
         rows = [["符号", "含义"]] + paper["terms"][:4]
-        add_table(slide, rows, w * 0.60, 1.50, w * 0.34, 2.42, sizes["table"], accent)
-        add_rule(slide, 0.86, 4.38, w - 1.72, accent)
-        add_bullets(slide, paper["formula_notes_wide"], 0.86, 4.64, w - 1.72, 1.10, sizes, name="BODY_FORMULA_EXPLAIN", space_after=0.8)
-        metric_row(slide, [["目标", "优化量"], ["约束", "安全集"], ["动力学", "状态传播"]], 0.98, h - 1.08, w - 1.96, accent, 15.4)
+        add_table(slide, rows, w * 0.61, 1.42, w * 0.33, 2.50, sizes["table"], accent)
+        add_rule(slide, 0.86, 4.22, w - 1.72, accent)
+        add_bullets(slide, paper["formula_notes_wide"], 0.86, 4.46, w * 0.52, 1.10, sizes, name="BODY_FORMULA_EXPLAIN", space_after=0.48)
+        add_table(slide, [["对象", "进入方式"], ["目标", "代价函数"], ["约束", "可行集合"], ["输出", "控制/轨迹"]], w * 0.61, 4.40, w * 0.33, 1.26, sizes["table"], accent)
+        metric_row(slide, [["目标", "优化量"], ["约束", "安全集"], ["动力学", "状态传播"]], 0.98, h - 1.02, w - 1.96, accent, 15.4)
 
 
 def evidence_slide(prs: Presentation, paper: dict[str, Any], assets: dict[str, Path], accent: RGBColor, sizes: dict[str, float]) -> None:
@@ -522,7 +650,7 @@ def evidence_slide(prs: Presentation, paper: dict[str, Any], assets: dict[str, P
     else:
         add_table(slide, rows, 0.80, 4.16, w * 0.48, 1.36, sizes["table"], accent)
         add_bullets(slide, paper["evidence_notes_wide"], w * 0.56, 4.14, w * 0.36, 1.28, sizes, name="BODY_EVIDENCE", space_after=0.7)
-        metric_row(slide, [["宽图", "自然比例"], ["表格", "原生对象"], ["解释", "邻近证据"]], 0.94, h - 1.08, w - 1.88, accent, 15.4)
+        metric_row(slide, [["轨迹", "候选收敛"], ["对比", "性能差异"], ["结论", "可执行性"]], 0.94, h - 1.08, w - 1.88, accent, 15.4)
 
 
 def narrow_figure_slide(prs: Presentation, paper: dict[str, Any], assets: dict[str, Path], accent: RGBColor, sizes: dict[str, float]) -> None:
@@ -540,6 +668,7 @@ def narrow_figure_slide(prs: Presentation, paper: dict[str, Any], assets: dict[s
         add_bullets(slide, paper["tall_figure_notes_wide"], w * 0.39, 1.52, w * 0.52, 2.82, sizes, name="BODY_NARROW", space_after=0.9)
         add_rule(slide, w * 0.39, 4.70, w * 0.52, accent)
         add_bullets(slide, paper["tall_figure_bottom_notes"], w * 0.39, 4.92, w * 0.52, 0.70, sizes, name="BODY_NARROW_NOTE", space_after=0.0)
+        metric_row(slide, [["输入", "观测/状态"], ["约束", "安全/通信"], ["输出", "轨迹/位姿"]], w * 0.39, h - 1.08, w * 0.52, accent, 14.8)
 
 
 def summary_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, sizes: dict[str, float]) -> None:
@@ -552,26 +681,27 @@ def summary_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, si
         "● " + paper["main_claim"],
         "• " + paper["summary_method"],
         "• " + paper["summary_result"],
-        "• 局限部分只描述方法边界，不写提示演讲者的过程性语言。",
+        "• 方法边界主要来自约束建模、候选覆盖范围和真实执行误差。",
     ]
     if w < 11.0:
         summary_lines.extend(paper["summary_extra"])
-    add_bullets(slide, summary_lines, 0.76, 1.52, w - 1.52, 3.52 if w < 11.0 else 2.06, sizes, name="BODY_SUMMARY", space_after=0.62)
+    add_bullets(slide, summary_lines, 0.76, 1.48, w - 1.52, 3.18 if w < 11.0 else 1.86, sizes, name="BODY_SUMMARY", space_after=0.48)
     if w < 11.0:
-        add_table(slide, [["对象", "约束"], ["轨迹", "连续性"], ["公式", "固定行距"], ["图像", "比例保持"]], 0.88, 4.70, w - 1.76, 0.90, 10.7, accent)
+        add_table(slide, [["对象", "约束"], ["轨迹", "连续性"], ["控制", "输入边界"], ["实验", "可执行性"]], 0.88, 3.64, w - 1.76, 1.05, 10.7, accent)
+        metric_row(slide, [["问题", "规划约束"], ["方法", "在线选择"], ["结果", "飞行验证"]], 0.88, h - 1.84, w - 1.76, accent, 15.2)
     else:
         add_table(
             slide,
             paper["summary_rows"],
             0.88,
-            3.55,
+            3.42,
             w - 1.76,
-            1.20,
+            1.34,
             10.8,
             accent,
         )
-        add_bullets(slide, paper["summary_bridge"], 0.96, 4.96, w - 1.92, 0.44, sizes, name="BODY_SUMMARY_BRIDGE", space_after=0.0)
-    metric_row(slide, [["公式", "可编辑文本"], ["图片", "比例保持"], ["结论", "方法边界"]], 0.88, h - 1.32, w - 1.76, accent, 15.2 if w < 11.0 else 15.8)
+        add_bullets(slide, paper["summary_bridge"], 0.96, 5.02, w - 1.92, 0.46, sizes, name="BODY_SUMMARY_BRIDGE", space_after=0.0)
+        metric_row(slide, [["问题", "任务约束"], ["方法", "闭环求解"], ["结果", "实验证据"]], 0.88, h - 1.74, w - 1.76, accent, 15.8)
 
 
 def thanks_slide(prs: Presentation, accent: RGBColor, template_id: str) -> None:
@@ -638,7 +768,17 @@ def render_case(pptx: Path, case_dir: Path, *, timeout: int) -> int:
     print(proc.stdout)
     if proc.returncode != 0:
         return proc.returncode
-    proc = run([py, str(SCAN), str(png_dir), "--fail-on-warning", "--ignore-edge-slides"], timeout=60)
+    proc = run([
+        py,
+        str(SCAN),
+        str(png_dir),
+        "--fail-on-warning",
+        "--ignore-edge-slides",
+        "--blank-warn",
+        "0.76",
+        "--min-band-fraction",
+        "0.14",
+    ], timeout=60)
     print(proc.stdout)
     return proc.returncode
 

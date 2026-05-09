@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -26,6 +27,72 @@ BULLET_LEVELS = {
     "•": "secondary",
     "–": "tertiary",
     "-": "tertiary",
+}
+
+CODE_STYLE_MATH = re.compile(
+    r"(?:[A-Za-zΑ-Ωα-ωϕϑϖϱ][A-Za-z0-9Α-Ωα-ωϕϑϖϱ]*|[πλΔηψθγℓϕ])_(?:\{[^}\s]+\}|[A-Za-z0-9Α-Ωα-ωϕϑϖϱ]+)"
+)
+
+SUBSCRIPT = {
+    "0": "₀",
+    "1": "₁",
+    "2": "₂",
+    "3": "₃",
+    "4": "₄",
+    "5": "₅",
+    "6": "₆",
+    "7": "₇",
+    "8": "₈",
+    "9": "₉",
+    "+": "₊",
+    "-": "₋",
+    "=": "₌",
+    "(": "₍",
+    ")": "₎",
+    "a": "ₐ",
+    "e": "ₑ",
+    "h": "ₕ",
+    "i": "ᵢ",
+    "j": "ⱼ",
+    "k": "ₖ",
+    "l": "ₗ",
+    "m": "ₘ",
+    "n": "ₙ",
+    "o": "ₒ",
+    "p": "ₚ",
+    "r": "ᵣ",
+    "s": "ₛ",
+    "t": "ₜ",
+    "u": "ᵤ",
+    "v": "ᵥ",
+    "x": "ₓ",
+}
+
+SHORT_SUFFIX = {
+    "dot": "\u0307",
+    "slow": "ₛ",
+    "safe": "ₛ",
+    "target": "ₜ",
+    "noise": "ₙ",
+    "goal": "g",
+    "total": "ₜ",
+    "pos": "ₚ",
+    "yaw": "ᵧ",
+    "max": "ₘₐₓ",
+    "min": "ₘᵢₙ",
+    "snap": "ₛ",
+    "time": "ₜ",
+    "cost": "꜀",
+    "cbf": "꜀",
+    "fov": "𝒇",
+    "FOV": "𝒇",
+    "sr": "ₛᵣ",
+    "rand": "ᵣ",
+    "bin": "ᵦ",
+    "best": "ᵦ",
+    "static": "ₛ",
+    "B": "ᵦ",
+    "d": "d",
 }
 
 
@@ -82,7 +149,44 @@ def normalize_paragraph(paragraph: ET.Element, level: str, size_pt: float, font:
     return changed
 
 
-def repair_slide(xml: bytes, targets: dict[str, float], *, font: str, fix_newlines: bool) -> tuple[bytes, int]:
+def display_math_label(raw: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        token = match.group(0)
+        base, suffix = token.split("_", 1)
+        if suffix.startswith("{") and suffix.endswith("}"):
+            suffix = suffix[1:-1]
+        if suffix in SHORT_SUFFIX:
+            return base + SHORT_SUFFIX[suffix]
+        if suffix and all(ch in SUBSCRIPT for ch in suffix):
+            return base + "".join(SUBSCRIPT[ch] for ch in suffix)
+        return f"{base}({suffix})"
+
+    return CODE_STYLE_MATH.sub(repl, raw)
+
+
+def repair_math_labels(paragraph: ET.Element) -> bool:
+    text_nodes = paragraph.findall(".//a:t", NS)
+    if not text_nodes:
+        return False
+    original = "".join(node.text or "" for node in text_nodes)
+    repaired = display_math_label(original)
+    if repaired == original:
+        return False
+    text_nodes[0].text = repaired
+    for node in text_nodes[1:]:
+        node.text = ""
+    return True
+
+
+def repair_slide(
+    xml: bytes,
+    targets: dict[str, float],
+    *,
+    font: str,
+    fix_newlines: bool,
+    fix_math_labels: bool,
+    only_math_labels: bool,
+) -> tuple[bytes, int]:
     root = ET.fromstring(xml)
     changes = 0
     for shape in root.findall(".//p:sp", NS):
@@ -94,7 +198,7 @@ def repair_slide(xml: bytes, targets: dict[str, float], *, font: str, fix_newlin
             "".join(node.text or "" for node in paragraph.findall(".//a:t", NS))
             for paragraph in paragraphs
         ]
-        if paragraphs and not any(text.strip() for text in texts):
+        if not only_math_labels and paragraphs and not any(text.strip() for text in texts):
             shape.remove(text_body)
             changes += 1
             continue
@@ -104,13 +208,53 @@ def repair_slide(xml: bytes, targets: dict[str, float], *, font: str, fix_newlin
                     if node.text and "\n" in node.text:
                         node.text = " ".join(node.text.split())
                         changes += 1
+            if fix_math_labels and repair_math_labels(paragraph):
+                changes += 1
+                text = "".join(node.text or "" for node in paragraph.findall(".//a:t", NS))
+            if only_math_labels:
+                continue
             level = bullet_level(text)
             if level and normalize_paragraph(paragraph, level, targets[level], font):
                 changes += 1
+    if fix_math_labels:
+        for frame in root.findall(".//p:graphicFrame", NS):
+            for paragraph in frame.findall(".//a:p", NS):
+                if repair_math_labels(paragraph):
+                    changes += 1
     return ET.tostring(root, encoding="utf-8", xml_declaration=True), changes
 
 
-def repair_pptx(src: Path, dst: Path, *, profile: str, font: str, fix_newlines: bool) -> int:
+def canonicalize_with_python_pptx(path: Path) -> None:
+    """Reserialize through python-pptx so LibreOffice can load repaired files.
+
+    Direct zip/XML rewrites can produce packages that are valid enough for
+    python-pptx but rejected by LibreOffice. A final save normalizes package
+    details without changing slide content.
+    """
+    from pptx import Presentation
+
+    tmp_path = path.with_name(f"{path.stem}.canonicalizing{path.suffix}")
+    if tmp_path.exists():
+        tmp_path.unlink()
+    try:
+        prs = Presentation(str(path))
+        prs.save(tmp_path)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
+def repair_pptx(
+    src: Path,
+    dst: Path,
+    *,
+    profile: str,
+    font: str,
+    fix_newlines: bool,
+    fix_math_labels: bool,
+    only_math_labels: bool,
+) -> int:
     targets = PROFILE_TARGETS[profile]
     dst.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = dst.with_name(f"{dst.stem}.repairing{dst.suffix}")
@@ -123,10 +267,18 @@ def repair_pptx(src: Path, dst: Path, *, profile: str, font: str, fix_newlines: 
             for item in zin.infolist():
                 data = zin.read(item.filename)
                 if item.filename in slide_set:
-                    data, changes = repair_slide(data, targets, font=font, fix_newlines=fix_newlines)
+                    data, changes = repair_slide(
+                        data,
+                        targets,
+                        font=font,
+                        fix_newlines=fix_newlines,
+                        fix_math_labels=fix_math_labels,
+                        only_math_labels=only_math_labels,
+                    )
                     total_changes += changes
                 zout.writestr(item, data)
         tmp_path.replace(dst)
+        canonicalize_with_python_pptx(dst)
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
@@ -141,13 +293,27 @@ def main() -> int:
     parser.add_argument("--profile", choices=sorted(PROFILE_TARGETS), default="compact")
     parser.add_argument("--font", default="Times New Roman")
     parser.add_argument("--fix-newlines", action="store_true")
+    parser.add_argument("--fix-math-labels", action="store_true")
+    parser.add_argument(
+        "--only-math-labels",
+        action="store_true",
+        help="Only convert visible code-style math labels; do not normalize body font sizes.",
+    )
     args = parser.parse_args()
 
     if not args.in_place and not args.out_dir:
         parser.error("use --in-place or --out-dir")
     for path in args.pptx:
         dst = path if args.in_place else args.out_dir / path.name
-        changes = repair_pptx(path, dst, profile=args.profile, font=args.font, fix_newlines=args.fix_newlines)
+        changes = repair_pptx(
+            path,
+            dst,
+            profile=args.profile,
+            font=args.font,
+            fix_newlines=args.fix_newlines,
+            fix_math_labels=args.fix_math_labels or args.only_math_labels,
+            only_math_labels=args.only_math_labels,
+        )
         print(f"{dst}: repaired {changes} item(s)")
     return 0
 

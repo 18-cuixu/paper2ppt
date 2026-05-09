@@ -101,22 +101,52 @@ def assert_readable_file(path: Path, label: str) -> None:
         raise RuntimeError(f"{label} is not readable: {path} ({exc})") from exc
 
 
+def canonicalize_pptx_for_export(src: Path, dst: Path) -> str:
+    """Save through python-pptx before LibreOffice export when possible.
+
+    Some PPTX files pass zip/XML checks and open with python-pptx, but LibreOffice
+    refuses them with "source file could not be loaded" until the package is
+    reserialized. Keep the source untouched and use a canonical staged copy.
+    """
+    try:
+        from pptx import Presentation
+
+        prs = Presentation(str(src))
+        prs.save(dst)
+        return "python-pptx canonicalized"
+    except Exception:
+        shutil.copy2(src, dst)
+        return "raw copied"
+
+
+def make_export_stage(out_dir: Path) -> Path:
+    # LibreOffice on Windows is sensitive to deep source/profile paths. Keep the
+    # staged PPTX and user profile directly under the workspace root, then copy
+    # the exported PDF back to the case output directory.
+    del out_dir
+    stage_parent = workspace_root()
+    stage_root = stage_parent / f"_paper2ppt_lo_stage_{os.getpid()}"
+    counter = 0
+    while stage_root.exists():
+        counter += 1
+        stage_root = stage_parent / f"_paper2ppt_lo_stage_{os.getpid()}_{counter}"
+    stage_root.mkdir(parents=True, exist_ok=False)
+    return stage_root
+
+
 def export_pdf(pptx: Path, out_dir: Path, office: str, *, timeout: int) -> Path:
     pptx = pptx.resolve()
     assert_readable_file(pptx, "source PPTX")
     out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    stage_root = workspace_root()
-    stage_name = f"paper2ppt-matrix-{os.getpid()}"
-    staged = stage_root / f"{stage_name}.pptx"
-    staged_pdf = stage_root / f"{stage_name}.pdf"
-    profile = stage_root / "lo-profile-matrix-global"
-    profile.mkdir(parents=True, exist_ok=True)
-    for transient in (staged, staged_pdf):
-        if transient.exists():
-            transient.unlink()
+    stage_root = make_export_stage(out_dir)
+    staged = stage_root / "input.pptx"
+    staged_pdf = stage_root / "input.pdf"
+    profile = stage_root / "profile"
     try:
-        shutil.copy2(pptx, staged)
+        profile.mkdir(parents=True, exist_ok=True)
+        mode = canonicalize_pptx_for_export(pptx, staged)
+        print(f"staged PPTX for LibreOffice export: {mode}", flush=True)
         assert_readable_file(staged, "staged PPTX")
         cmd = [
             office,
@@ -133,7 +163,7 @@ def export_pdf(pptx: Path, out_dir: Path, office: str, *, timeout: int) -> Path:
         if proc.returncode != 0:
             raise RuntimeError(f"LibreOffice export failed for {pptx.name}")
         if not staged_pdf.exists():
-            matches = sorted(stage_root.glob(f"{stage_name}*.pdf"))
+            matches = sorted(stage_root.glob("*.pdf"))
             if not matches:
                 raise RuntimeError(f"LibreOffice did not create a PDF for {pptx.name}")
             staged_pdf = matches[-1]
@@ -141,12 +171,7 @@ def export_pdf(pptx: Path, out_dir: Path, office: str, *, timeout: int) -> Path:
         shutil.copy2(staged_pdf, final_pdf)
         return final_pdf
     finally:
-        for transient in (staged, staged_pdf):
-            try:
-                if transient.exists():
-                    transient.unlink()
-            except OSError:
-                pass
+        shutil.rmtree(stage_root, ignore_errors=True)
 
 
 def main() -> int:

@@ -31,6 +31,9 @@ SUSPICIOUS = [
     "汇报重点",
     "讲解重点",
     "应该强调",
+    "表格强调",
+    "收益项强调",
+    "方法强调",
     "这一页",
     "本页",
     "这页",
@@ -69,6 +72,9 @@ BLANK_PATTERNS = [
 ]
 
 BODY_LINE_BREAK = re.compile(r"[^\n]\n[^\n]")
+CODE_STYLE_MATH = re.compile(
+    r"(?:[A-Za-zΑ-Ωα-ωϕϑϖϱ][A-Za-z0-9Α-Ωα-ωϕϑϖϱ]*|[πλΔηψθγℓϕ])_(?:\{[^}\s]+\}|[A-Za-z0-9Α-Ωα-ωϕϑϖϱ]+)"
+)
 BODY_MARKERS = ("●", "•", "–", "-")
 BULLET_LEVELS = {
     "●": "main",
@@ -76,7 +82,7 @@ BULLET_LEVELS = {
     "–": "tertiary",
     "-": "tertiary",
 }
-CONTENT_SHAPE_NAMES = ("MATH_",)
+CONTENT_SHAPE_NAMES = ("MATH_", "RULE", "METRIC_BOX_")
 INTENTIONAL_BREAK_SHAPE_NAMES = ("DIAG_",)
 
 PROFILE_PRESETS = {
@@ -161,6 +167,20 @@ def iter_slide_text(pptx: Path):
             root = ET.fromstring(zf.read(name))
             texts = [node.text or "" for node in root.findall(".//a:t", NS)]
             yield slide_no, "".join(texts)
+
+
+def iter_text_paragraphs(pptx: Path):
+    with zipfile.ZipFile(pptx) as zf:
+        for name in slide_names(zf):
+            slide_no = int(re.search(r"slide(\d+)\.xml", name).group(1))
+            root = ET.fromstring(zf.read(name))
+            containers = root.findall(".//p:sp", NS) + root.findall(".//p:graphicFrame", NS)
+            for idx, container in enumerate(containers):
+                name_node = container.find(".//p:cNvPr", NS)
+                shape_name = name_node.get("name", f"shape-{idx}") if name_node is not None else f"shape-{idx}"
+                for paragraph in container.findall(".//a:p", NS):
+                    text = "".join(node.text or "" for node in paragraph.findall(".//a:t", NS))
+                    yield slide_no, shape_name, text
 
 
 def iter_text_bodies(pptx: Path):
@@ -321,7 +341,9 @@ def iter_content_bounds(pptx: Path):
                 name_node = node.find(".//p:cNvPr", NS)
                 shape_name = name_node.get("name", f"shape-{idx}") if name_node is not None else f"shape-{idx}"
                 text = "".join(t.text or "" for t in node.findall(".//a:t", NS)).strip()
-                is_content = bool(text) or node.tag.endswith("pic") or node.tag.endswith("graphicFrame")
+                is_rule = shape_name.startswith("RULE")
+                is_metric_box = shape_name.startswith("METRIC_BOX_")
+                is_content = bool(text) or node.tag.endswith("pic") or node.tag.endswith("graphicFrame") or is_rule or is_metric_box
                 if not is_content and not shape_name.startswith(CONTENT_SHAPE_NAMES):
                     continue
                 xfrm = node.find(".//a:xfrm", NS)
@@ -397,16 +419,38 @@ def overlap_area(a: tuple[float, float, float, float], b: tuple[float, float, fl
     return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
 
 
+def vertical_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    if a[3] <= b[1]:
+        return b[1] - a[3]
+    if b[3] <= a[1]:
+        return a[1] - b[3]
+    return 0.0
+
+
+def horizontal_overlap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    return max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+
+
 def should_check_overlap(name: str, box: tuple[float, float, float, float], slide_h: float) -> bool:
     left, top, right, bottom = box
     if top < 1.0 or bottom > slide_h - 0.42:
         return False
     if right - left < 0.05 or bottom - top < 0.05:
         return False
+    if name.startswith(("RULE", "METRIC_BOX_")):
+        return True
     lowered = name.lower()
     if "connector" in lowered or "rectangle" in lowered and not name.startswith("MATH_"):
         return False
     return True
+
+
+def allowed_overlap(name_a: str, name_b: str) -> bool:
+    if name_a.startswith("METRIC_BOX_") and name_b.startswith(("METRIC_VALUE_", "METRIC_LABEL_")):
+        return True
+    if name_b.startswith("METRIC_BOX_") and name_a.startswith(("METRIC_VALUE_", "METRIC_LABEL_")):
+        return True
+    return False
 
 
 def main() -> int:
@@ -470,6 +514,12 @@ def main() -> int:
             for pattern in BLANK_PATTERNS:
                 if pattern.search(text):
                     warnings.append(f"{prefix} slide {slide_no:02d}: possible blank paragraph or empty bullet")
+
+        for slide_no, shape_name, text in iter_text_paragraphs(pptx):
+            for match in CODE_STYLE_MATH.finditer(text):
+                warnings.append(
+                    f"{prefix} slide {slide_no:02d}: code-style math label `{match.group(0)}` in `{shape_name}`"
+                )
 
         paragraphs_for_last = []
         for slide_no, _, texts, paragraphs in iter_text_bodies(pptx):
@@ -570,6 +620,16 @@ def main() -> int:
                     name_a, box_a = items[i]
                     for j in range(i + 1, len(items)):
                         name_b, box_b = items[j]
+                        if allowed_overlap(name_a, name_b):
+                            continue
+                        if name_a.startswith("RULE") or name_b.startswith("RULE"):
+                            gap = vertical_gap(box_a, box_b)
+                            h_overlap = horizontal_overlap(box_a, box_b)
+                            if gap < 0.12 and h_overlap > 0.35:
+                                warnings.append(
+                                    f"{prefix} slide {slide_no:02d}: text or content too close to rule "
+                                    f"`{name_a}` and `{name_b}`"
+                                )
                         area = overlap_area(box_a, box_b)
                         if area <= 0.015:
                             continue

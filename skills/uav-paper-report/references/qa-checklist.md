@@ -11,6 +11,9 @@ Use this checklist before delivering a deck.
 - Public or uploaded PPTX assets have been sanitized with `scripts/sanitize_pptx_privacy.py`.
 - Privacy scan reports no personal names, editor metadata, notes slides, comments, custom properties, or visible presenter placeholders containing real names.
 - Multi-template public examples pass `scripts/run_template_matrix.py`; local template generalization cases pass `scripts/run_template_smoke.py` when testing new template families.
+- Template smoke rendered scans use strict blank-area thresholds: `--blank-warn 0.76 --min-band-fraction 0.14`, with first/last slides ignored only for cover/thanks pages.
+- PPTX text audits use the template's declared profile. Do not judge a `classic-large` template with compact font thresholds, and do not loosen thresholds to pass a new deck.
+- LibreOffice export uses the matrix/smoke export helper or equivalent short-path staging. The staged PPTX should be reserialized through `python-pptx` before export so package quirks are not mistaken for layout failures.
 
 ## Visual Review
 
@@ -25,6 +28,7 @@ Check the preview grid first, then individual risk slides.
 - No image/text collision.
 - No page has obvious meaningless blank lines.
 - No body bullet, method explanation, table cell, or figure interpretation uses manual line breaks to fake wrapping.
+- No generator helper silently accepts `\n`, empty bullet paragraphs, empty table cells, or empty formula runs in body content.
 - No continuous bullet block has a gap larger than about one normal text line between paragraphs.
 - No slide uses empty paragraphs or standalone bullet markers to create vertical spacing.
 - Content slides do not leave more than about 20% empty area unless intentionally sparse.
@@ -107,7 +111,9 @@ Before committing or uploading a skill package:
 - Formula text is editable where feasible.
 - Formula font is Times New Roman.
 - Formula sizes are visually consistent across method slides.
-- Formula text does not show code-style braces/underscores such as `p_{k+1}` or `L_clearance` in the rendered PNG.
+- Formula text does not show code-style braces/underscores such as `p_{k+1}`, `L_clearance`, `J_path`, or `GSD_0` in the rendered PNG.
+- Formula tables do not show code-style labels such as `P_safe`, `u_safe`, `pi_theta`, `L_smooth`, `J_path`, `GSD_0`, or `Omega`; use display-style symbols and explain long names in the meaning column.
+- The PPTX audit fails visible math labels that match code-style underscore patterns; fix the source symbols rather than suppressing the audit.
 - Long formulas are split across slides or shortened with explanation.
 - Explanatory bullets say what each term means and why it matters.
 

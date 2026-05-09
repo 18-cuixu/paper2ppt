@@ -4,6 +4,14 @@
 
 ## 中文
 
+### 本次质量更新
+
+- 新增更严格的 PPTX 文本与布局审计：会检查空文本体、混合空段、正文手动换行、正文字号漂移和越界 shape。
+- 正文字号必须使用固定层级，不能为了塞内容在不同页随意调大调小。
+- 普通正文不能依赖空段落、空文本框或手动换行制造间距；需要通过区域宽度、段落间距和页面重排解决。
+- 新生成的报告建议使用 `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`，公开示例也已清理空文本体。
+- 生成后必须按顺序完成：PPTX 审计、LibreOffice 导出、PNG 渲染、渲染页扫描和风险页人工检查。
+
 `paper2ppt` 收录了一个用于论文汇报 PPT 生成与审查的 Codex Skill：`uav-paper-report`。它面向无人机、机器人、规划、SLAM、控制和自主系统方向的中文组会/论文汇报，强调风格一致、内容密度、公式表达、图片裁剪、排版检查和渲染后的视觉 QA。
 
 公开仓库只保留 AI 生成示例、生成脚本和审查脚本；不包含原始汇报模板或任何个人汇报材料。
@@ -92,7 +100,7 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 
 ### 主要脚本
 
-- `scripts/audit_pptx_text.py`：检查 AI 化表述、空段落、手动换行和字号异常。
+- `scripts/audit_pptx_text.py`：检查 AI 化表述、空文本体、混合空段、手动换行、字号异常、严格字号层级和越界 shape。
 - `scripts/sanitize_pptx_privacy.py`：清理 PPTX 个人信息、备注、批注、自定义属性和可见汇报人姓名。
 - `scripts/render_pptx_previews.py`：把导出的 PDF 渲染为逐页 PNG 和 preview grid。
 - `scripts/scan_rendered_slides.py`：扫描空白过多、拥挤和异常空白带。
@@ -116,6 +124,14 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 这个仓库不是一个完整产品化的“论文转 PPT”应用，而是一个可复用的 Codex Skill 包。它适合在 Codex 中作为生成和审查流程使用，也可以把 scaffold 脚本单独拿出来改造成自己的生成流程。
 
 ## English
+
+### Quality Update
+
+- Added stricter PPTX text/layout auditing for empty text bodies, mixed empty paragraphs, manual body newlines, body font hierarchy drift, and out-of-bounds shapes.
+- Body text must use a fixed hierarchy across the deck instead of changing slide by slide to force content to fit.
+- Normal body spacing must come from layout geometry and paragraph spacing, not empty paragraphs, empty text boxes, or manual line breaks.
+- New generated decks should run `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`; public examples have also been cleaned of empty text bodies.
+- Each generated deck should pass, in order: PPTX audit, LibreOffice export, PNG rendering, rendered-slide scan, and manual risk-slide inspection.
 
 `paper2ppt` contains a Codex Skill named `uav-paper-report` for generating and auditing academic paper-report PowerPoint decks. It is designed for Chinese group-meeting or thesis-style reports on UAVs, robotics, planning, SLAM, control, and autonomous systems. The workflow emphasizes style fidelity, content density, editable formulas, clean figure crops, layout checks, and rendered visual QA.
 
@@ -144,7 +160,7 @@ paper2ppt/
 - Reuses the reference visual system, including cover, closing slide, header, rules, type hierarchy, and blue theme.
 - Builds a complete report structure: background, technical points, method, formulas, experiments, limitations, and summary.
 - Uses editable PowerPoint-native text, tables, shapes, and formula-like text instead of slide screenshots.
-- Checks figure crops, aspect ratios, text-image spacing, blank areas, overlap, meaningless line breaks, and AI-sounding wording.
+- Checks figure crops, aspect ratios, text-image spacing, blank areas, overlap, meaningless line breaks, font hierarchy drift, empty text bodies, and AI-sounding wording.
 - Sanitizes PPTX examples and generated outputs before publishing by removing personal information, notes, comments, and document metadata.
 - Provides validated scaffold scripts and example decks for reuse.
 
@@ -195,7 +211,8 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 This skill focuses on the following issues:
 
 - Use Times New Roman consistently for body text.
-- Body paragraphs need bullets and proper indentation; meaningless blank lines should not remain.
+- Body paragraphs need bullets and proper indentation; meaningless blank lines, empty text bodies, and manual body newlines should not remain.
+- Body font sizes should use a fixed hierarchy across the deck instead of changing slide by slide to force content to fit.
 - Key terms and numbers may be bold/red, but most text should stay black.
 - Formulas should preferably be editable PowerPoint-native text/shapes with consistent sizing.
 - Images must preserve aspect ratio, avoid text overlap, and keep important content visible.
@@ -205,7 +222,7 @@ This skill focuses on the following issues:
 
 ### Main Scripts
 
-- `scripts/audit_pptx_text.py`: checks AI-sounding wording, empty paragraphs, manual line breaks, and font-size anomalies.
+- `scripts/audit_pptx_text.py`: checks AI-sounding wording, empty text bodies, mixed empty paragraphs, manual line breaks, font-size anomalies, strict body hierarchy, and out-of-bounds shapes.
 - `scripts/sanitize_pptx_privacy.py`: removes PPTX personal information, notes, comments, custom properties, and visible presenter names.
 - `scripts/render_pptx_previews.py`: renders exported PDFs into slide PNGs and a preview grid.
 - `scripts/scan_rendered_slides.py`: scans for excessive blank space, crowding, and large internal whitespace bands.

@@ -44,7 +44,7 @@ The deck is a live paper report, not a product brochure. Write enough content fo
 Use the accepted header rhythm, blue cover/ending band, and horizontal rules. Keep a calm academic look. If a private template provides a logo, use it only in the generated local output, not in public assets.
 
 - Font: Times New Roman for all runs, including Chinese text when the user asks for 新罗马.
-- Body sizes: main bullets around 19-20 pt, secondary bullets around 17.5-19 pt, tables around 12.5-14 pt, formulas around 19-24 pt.
+- Body sizes must be consistent within a deck. Pick a small hierarchy and reuse it: main bullets about 17.8-18.5 pt, secondary bullets about 16.8-17.4 pt, tertiary bullets about 16.2-16.6 pt, tables about 11.8-13.0 pt, formulas about 18.5-21 pt. Do not tune body font size slide by slide just to make content fit.
 - Bullets: every paragraph in body areas needs a marker and proper hanging indent. Use `●` for level 0, `•` for level 1, `–` for level 2.
 - Emphasis: bold/red only for key terms, core numbers, algorithm names, or decisive comparison results. Do not make most of a slide red.
 - Layout: keep one reading direction per slide. Use either top-to-bottom regions or a clear left-right comparison, not mixed random blocks.
@@ -55,6 +55,7 @@ Use the accepted header rhythm, blue cover/ending band, and horizontal rules. Ke
 - Tables: use compact native tables, consistent font, enough row height, and red emphasis only for key winning values.
 - Formulas: prefer editable PowerPoint text/shape formulas. Align formula rows, keep formula font consistent, and split complex derivations across slides.
 - Manual line breaks: never insert `\n` inside body bullets, method explanations, table cells, or figure interpretations to force wrapping. Use separate bullet paragraphs or resize the region. Manual breaks are allowed only for cover titles and intentionally split formula rows.
+- Bold level-0 bullets only when the whole paragraph is a short claim. For normal body paragraphs, keep the paragraph black/regular and emphasize only key terms or numbers. Whole-paragraph bold makes adjacent slides look like different font sizes.
 
 Read `references/style-guide.md` when doing a visual refresh or when layout quality is the main issue.
 
@@ -72,6 +73,9 @@ Treat the LibreOffice-exported PNG as the layout source of truth. `python-pptx` 
 - If fixing one slide moves content into another region, rerender immediately and inspect that individual PNG before doing broad edits.
 - Unexplained line breaks are blocking defects. If a rendered bullet wraps while there is visible horizontal room, shorten/no-wrap the English term, widen the text box, or move to a left-right layout; do not keep a hand-inserted blank line or one-word orphan line.
 - Do not create empty paragraph objects for vertical spacing. Use shape coordinates and paragraph `space_after` only; the XML must not contain empty body paragraphs or standalone bullet markers.
+- Do not leave empty text bodies on decorative shapes. If a shape is only a line, band, card background, or image shadow, remove its `p:txBody` after creation or have the audit script fail it.
+- Do not accept text-box driven "blank-line spacing". If a slide appears to contain a blank line or an orphan wrapped word after rendering, widen the text region, shorten the sentence, or split the content; never add an empty paragraph.
+- No shape may extend beyond the slide bounds. This includes process boxes, cards, hidden shadows, tables, pictures, and decorative rectangles; run the PPTX audit before export.
 - Method slides must not alternate between vertical stacking and side-by-side blocks without a visible separator. Pick one layout family per slide; if formulas plus interpretation no longer fit cleanly, split into two method slides.
 - Use a region budget before coding a slide: header/title area, top claim area, evidence area, interpretation area, and bottom safety margin. A content region cannot be used by both text and image/table/formula even partially.
 - Use rendered text height, not only shape coordinates, as the acceptance standard. When a text box follows an image/table/formula/rule, reserve at least one rendered line of slack or split the slide.
@@ -102,7 +106,7 @@ Preferred forms:
 - Replace advice like `如果继续做...可以...` with a concrete applicability statement: `对...任务，该框架提供...建模路径`.
 - Replace value judgments like `最值得借鉴的是...` with method claims: `本文的建模方式是...`.
 
-Run `scripts/audit_pptx_text.py` before final delivery.
+Run `scripts/audit_pptx_text.py --strict-body-hierarchy --fail-on-warning` before final delivery for newly generated decks.
 
 ## Implementation Pattern
 
@@ -118,6 +122,7 @@ For Python decks, start from `assets/scaffolds/build_ego_deck.py` and `assets/sc
 - `assert_layout` or an equivalent shape-overlap checker: run before saving and fix geometry failures instead of bypassing them. This does not replace rendered PNG review.
 - A render-budget helper or equivalent manual calculation: estimate mixed Chinese/English line count, use conservative text box heights, and never place a rule/image immediately below the expected final line.
 - A slide lint pass before save: reject empty paragraphs, body-text `\n`, standalone bullet markers, oversized paragraph spacing, font sizes outside the section hierarchy, picture regions with poor aspect-ratio fit, and content slides whose planned occupied area is visibly under target.
+- The slide lint pass must also reject empty `p:txBody` nodes, mixed empty/text paragraphs, fixed-hierarchy font drift, and any shape whose bounds exceed the slide. Run `scripts/audit_pptx_text.py --strict-body-hierarchy --fail-on-warning` on the generated PPTX before rendering.
 - A privacy lint pass before upload or publication: use `scripts/sanitize_pptx_privacy.py --in-place` for example/generated PPTX files, then run it again with `--check-only --fail-on-warning`. Do not publish PPTX files containing author names, editor names, comments, notes slides, custom properties, or visible personal presenter text.
 
 For visual slides:
@@ -141,7 +146,7 @@ Before final response:
 1. Build the PPTX without exceptions.
 2. Export PPTX to PDF with LibreOffice.
 3. Render PDF pages to PNG and make a preview grid using `scripts/render_pptx_previews.py`.
-4. Run `scripts/audit_pptx_text.py` on the PPTX.
+4. Run `scripts/audit_pptx_text.py --strict-body-hierarchy --fail-on-warning` on the PPTX. This must pass with no warnings for suspicious wording, empty text bodies, mixed empty paragraphs, manual newlines, abnormal body font sizes, body hierarchy drift, or out-of-bounds shapes.
 5. After rendering has fully completed, run `scripts/scan_rendered_slides.py` on the rendered PNGs. Do not launch this in parallel with rendering.
 6. Visually inspect the preview grid and every risk slide individually. Risk slides include formulas, tables, multi-image layouts, large figures, hardware/result grids, or any slide changed in this pass.
 7. Open the actual figure crops when a rendered slide looks wrong; fix the crop first if it contains captions/body text or cuts off the visual.

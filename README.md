@@ -6,9 +6,10 @@
 
 ### 本次质量更新
 
-- 新增更严格的 PPTX 文本与布局审计：会检查空文本体、混合空段、正文手动换行、正文字号漂移和越界 shape。
+- 新增更严格的 PPTX 文本与布局审计：会检查空文本体、混合空段、正文手动换行、段落异常间距、窄公式长行、内容 shape 重叠、正文字号漂移和越界 shape。
 - 正文字号必须使用固定层级，不能为了塞内容在不同页随意调大调小。
 - 普通正文不能依赖空段落、空文本框或手动换行制造间距；需要通过区域宽度、段落间距和页面重排解决。
+- scaffold 默认拒绝正文中的 `\n`，只允许封面标题或显式图示节点使用有意分行；公式长行需要拆成稳定短行。
 - 新生成的报告建议使用 `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`，公开示例也已清理空文本体。
 - 生成后必须按顺序完成：PPTX 审计、LibreOffice 导出、PNG 渲染、渲染页扫描和风险页人工检查。
 
@@ -100,7 +101,7 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 
 ### 主要脚本
 
-- `scripts/audit_pptx_text.py`：检查 AI 化表述、空文本体、混合空段、手动换行、字号异常、严格字号层级和越界 shape。
+- `scripts/audit_pptx_text.py`：检查 AI 化表述、空文本体、混合空段、手动换行、异常段落间距、公式行宽度、内容重叠、字号异常、严格字号层级和越界 shape。
 - `scripts/sanitize_pptx_privacy.py`：清理 PPTX 个人信息、备注、批注、自定义属性和可见汇报人姓名。
 - `scripts/render_pptx_previews.py`：把导出的 PDF 渲染为逐页 PNG 和 preview grid。
 - `scripts/scan_rendered_slides.py`：扫描空白过多、拥挤和异常空白带。
@@ -127,9 +128,10 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 
 ### Quality Update
 
-- Added stricter PPTX text/layout auditing for empty text bodies, mixed empty paragraphs, manual body newlines, body font hierarchy drift, and out-of-bounds shapes.
+- Added stricter PPTX text/layout auditing for empty text bodies, mixed empty paragraphs, manual body newlines, abnormal paragraph spacing, long formula rows in narrow boxes, content-shape overlap, body font hierarchy drift, and out-of-bounds shapes.
 - Body text must use a fixed hierarchy across the deck instead of changing slide by slide to force content to fit.
 - Normal body spacing must come from layout geometry and paragraph spacing, not empty paragraphs, empty text boxes, or manual line breaks.
+- Scaffolds now reject `\n` in body text by default. Only cover titles or explicit diagram nodes should use intentional multi-line text; long formula rows must be split into stable short rows.
 - New generated decks should run `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`; public examples have also been cleaned of empty text bodies.
 - Each generated deck should pass, in order: PPTX audit, LibreOffice export, PNG rendering, rendered-slide scan, and manual risk-slide inspection.
 
@@ -222,7 +224,7 @@ This skill focuses on the following issues:
 
 ### Main Scripts
 
-- `scripts/audit_pptx_text.py`: checks AI-sounding wording, empty text bodies, mixed empty paragraphs, manual line breaks, font-size anomalies, strict body hierarchy, and out-of-bounds shapes.
+- `scripts/audit_pptx_text.py`: checks AI-sounding wording, empty text bodies, mixed empty paragraphs, manual line breaks, abnormal paragraph spacing, formula row width, content overlap, font-size anomalies, strict body hierarchy, and out-of-bounds shapes.
 - `scripts/sanitize_pptx_privacy.py`: removes PPTX personal information, notes, comments, custom properties, and visible presenter names.
 - `scripts/render_pptx_previews.py`: renders exported PDFs into slide PNGs and a preview grid.
 - `scripts/scan_rendered_slides.py`: scans for excessive blank space, crowding, and large internal whitespace bands.

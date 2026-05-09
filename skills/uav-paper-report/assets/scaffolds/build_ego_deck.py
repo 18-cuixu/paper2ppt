@@ -35,7 +35,24 @@ def add_box(slide, left, top, width, height):
     return base.add_box(slide, left, top, width, height)
 
 
-def plain(box, text: str, size: float, *, bold=False, color=BLACK, align=PP_ALIGN.LEFT) -> None:
+def reject_manual_newline(text: str, context: str, *, allow_newlines: bool = False) -> None:
+    if "\n" in text and not allow_newlines:
+        raise ValueError(f"{context}: manual newline is not allowed in body text")
+    if "\n" in text and any(not part.strip() for part in text.split("\n")):
+        raise ValueError(f"{context}: empty line inside manual line break")
+
+
+def plain(
+    box,
+    text: str,
+    size: float,
+    *,
+    bold=False,
+    color=BLACK,
+    align=PP_ALIGN.LEFT,
+    allow_newlines: bool = False,
+) -> None:
+    reject_manual_newline(text, f"plain({getattr(box, 'name', 'textbox')})", allow_newlines=allow_newlines)
     tf = box.text_frame
     tf.clear()
     tf.word_wrap = True
@@ -111,6 +128,8 @@ def set_textbox(box, lines: list[dict], *, default_size=20, space_after=1.0, lin
     tf.margin_top = Inches(0)
     tf.margin_bottom = Inches(0)
     for idx, item in enumerate(lines):
+        text = item["text"]
+        reject_manual_newline(text, f"bullet {idx + 1} in {getattr(box, 'name', 'textbox')}")
         level = item.get("level", 0)
         p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
         p.alignment = PP_ALIGN.LEFT
@@ -134,7 +153,7 @@ def set_textbox(box, lines: list[dict], *, default_size=20, space_after=1.0, lin
             ppr.set("indent", "-105000")
             prefix = item.get("marker", "– ")
             size = float(item.get("size", default_size))
-        set_runs(p, prefix + item["text"], size, bold=item.get("bold", level == 0), terms=terms)
+        set_runs(p, prefix + text, size, bold=item.get("bold", level == 0), terms=terms)
 
 
 def add_header(slide, part: str, title: str) -> None:
@@ -237,7 +256,7 @@ def divider_slide(prs, part: str, title: str, bullets: list[dict]):
     plain(title_box, title, 28, bold=True, align=PP_ALIGN.CENTER)
     box = add_box(slide, 1.16, 3.10, 11.00, 2.52)
     normal_bullets = [{**item, "bold": False} for item in bullets]
-    set_textbox(box, normal_bullets, default_size=22.0, space_after=3, line_spacing=1.04)
+    set_textbox(box, normal_bullets, default_size=22.0, space_after=0.08, line_spacing=1.04)
     return slide
 
 
@@ -301,9 +320,9 @@ def cover(prs):
     band.fill.fore_color.rgb = BLUE
     band.line.fill.background()
     title = add_box(slide, 0.55, 3.02, 12.25, 1.05)
-    plain(title, "EGO-Planner: An ESDF-free Gradient-based\nLocal Planner for Quadrotors", 30, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
+    plain(title, "EGO-Planner: An ESDF-free Gradient-based\nLocal Planner for Quadrotors", 30, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER, allow_newlines=True)
     subtitle = add_box(slide, 0.0, 4.24, 13.33, 0.74)
-    plain(subtitle, "Xin Zhou, Zhepei Wang, Hongkai Ye, Chao Xu, Fei Gao\nIEEE Robotics and Automation Letters, 2020", 18, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
+    plain(subtitle, "Xin Zhou, Zhepei Wang, Hongkai Ye, Chao Xu, Fei Gao\nIEEE Robotics and Automation Letters, 2020", 18, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER, allow_newlines=True)
     date = add_box(slide, 5.50, 6.62, 2.35, 0.45)
     plain(date, "2026年5月8日", 18, color=BLUE, align=PP_ALIGN.CENTER)
     return slide

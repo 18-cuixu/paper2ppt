@@ -55,6 +55,7 @@ Use the accepted header rhythm, blue cover/ending band, and horizontal rules. Ke
 - Tables: use compact native tables, consistent font, enough row height, and red emphasis only for key winning values.
 - Formulas: prefer editable PowerPoint text/shape formulas. Align formula rows, keep formula font consistent, and split complex derivations across slides.
 - Manual line breaks: never insert `\n` inside body bullets, method explanations, table cells, or figure interpretations to force wrapping. Use separate bullet paragraphs or resize the region. Manual breaks are allowed only for cover titles and intentionally split formula rows.
+- Generation helpers must reject `\n` in body text by default. If a title or diagram node truly needs multiple lines, pass an explicit `allow_newlines=True` or a list of node lines. Do not silently replace `\n` with spaces.
 - Bold level-0 bullets only when the whole paragraph is a short claim. For normal body paragraphs, keep the paragraph black/regular and emphasize only key terms or numbers. Whole-paragraph bold makes adjacent slides look like different font sizes.
 
 Read `references/style-guide.md` when doing a visual refresh or when layout quality is the main issue.
@@ -73,8 +74,10 @@ Treat the LibreOffice-exported PNG as the layout source of truth. `python-pptx` 
 - If fixing one slide moves content into another region, rerender immediately and inspect that individual PNG before doing broad edits.
 - Unexplained line breaks are blocking defects. If a rendered bullet wraps while there is visible horizontal room, shorten/no-wrap the English term, widen the text box, or move to a left-right layout; do not keep a hand-inserted blank line or one-word orphan line.
 - Do not create empty paragraph objects for vertical spacing. Use shape coordinates and paragraph `space_after` only; the XML must not contain empty body paragraphs or standalone bullet markers.
+- Keep paragraph spacing small. Body paragraphs should not use large `space_before` or `space_after` values to imitate blank lines; the audit script should fail abnormal paragraph spacing.
 - Do not leave empty text bodies on decorative shapes. If a shape is only a line, band, card background, or image shadow, remove its `p:txBody` after creation or have the audit script fail it.
 - Do not accept text-box driven "blank-line spacing". If a slide appears to contain a blank line or an orphan wrapped word after rendering, widen the text region, shorten the sentence, or split the content; never add an empty paragraph.
+- Do not accept formula-row driven wrapping. If an editable formula/text formula row is longer than the reserved row width, split it into shorter aligned rows or widen the formula band before rendering.
 - No shape may extend beyond the slide bounds. This includes process boxes, cards, hidden shadows, tables, pictures, and decorative rectangles; run the PPTX audit before export.
 - Method slides must not alternate between vertical stacking and side-by-side blocks without a visible separator. Pick one layout family per slide; if formulas plus interpretation no longer fit cleanly, split into two method slides.
 - Use a region budget before coding a slide: header/title area, top claim area, evidence area, interpretation area, and bottom safety margin. A content region cannot be used by both text and image/table/formula even partially.
@@ -122,7 +125,7 @@ For Python decks, start from `assets/scaffolds/build_ego_deck.py` and `assets/sc
 - `assert_layout` or an equivalent shape-overlap checker: run before saving and fix geometry failures instead of bypassing them. This does not replace rendered PNG review.
 - A render-budget helper or equivalent manual calculation: estimate mixed Chinese/English line count, use conservative text box heights, and never place a rule/image immediately below the expected final line.
 - A slide lint pass before save: reject empty paragraphs, body-text `\n`, standalone bullet markers, oversized paragraph spacing, font sizes outside the section hierarchy, picture regions with poor aspect-ratio fit, and content slides whose planned occupied area is visibly under target.
-- The slide lint pass must also reject empty `p:txBody` nodes, mixed empty/text paragraphs, fixed-hierarchy font drift, and any shape whose bounds exceed the slide. Run `scripts/audit_pptx_text.py --strict-body-hierarchy --fail-on-warning` on the generated PPTX before rendering.
+- The slide lint pass must also reject empty `p:txBody` nodes, mixed empty/text paragraphs, manual `a:br` line-break elements, long formula rows in narrow formula boxes, content-shape overlap, fixed-hierarchy font drift, and any shape whose bounds exceed the slide. Run `scripts/audit_pptx_text.py --strict-body-hierarchy --fail-on-warning` on the generated PPTX before rendering.
 - A privacy lint pass before upload or publication: use `scripts/sanitize_pptx_privacy.py --in-place` for example/generated PPTX files, then run it again with `--check-only --fail-on-warning`. Do not publish PPTX files containing author names, editor names, comments, notes slides, custom properties, or visible personal presenter text.
 
 For visual slides:

@@ -140,7 +140,14 @@ def paragraph_spacing(level: int, base: float, item: dict) -> float:
     return 0
 
 
-def set_textbox(box, lines: list[dict], *, default_size=18, terms=None, space_after=3, line_spacing=1.08) -> None:
+def reject_manual_newline(text: str, context: str, *, allow_newlines: bool = False) -> None:
+    if "\n" in text and not allow_newlines:
+        raise ValueError(f"{context}: manual newline is not allowed in body text")
+    if "\n" in text and any(not part.strip() for part in text.split("\n")):
+        raise ValueError(f"{context}: empty line inside manual line break")
+
+
+def set_textbox(box, lines: list[dict], *, default_size=18, terms=None, space_after=0.06, line_spacing=1.02) -> None:
     tf = box.text_frame
     tf.clear()
     tf.word_wrap = True
@@ -149,6 +156,8 @@ def set_textbox(box, lines: list[dict], *, default_size=18, terms=None, space_af
     tf.margin_top = Inches(0)
     tf.margin_bottom = Inches(0)
     for idx, item in enumerate(lines):
+        text = item["text"]
+        reject_manual_newline(text, f"bullet {idx + 1} in {getattr(box, 'name', 'textbox')}")
         level = item.get("level", 0)
         p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
         p.alignment = PP_ALIGN.LEFT
@@ -172,7 +181,7 @@ def set_textbox(box, lines: list[dict], *, default_size=18, terms=None, space_af
             ppr.set("indent", "-105000")
             prefix = item.get("marker", "– ")
             size = float(item.get("size", default_size))
-        add_runs(p, prefix + compact_text(item["text"]), size, bold=item.get("bold", level == 0), terms=terms)
+        add_runs(p, prefix + compact_text(text), size, bold=item.get("bold", level == 0), terms=terms)
 
 
 BODY_ADDITIONS = {
@@ -234,7 +243,17 @@ BODY_ADDITIONS = {
 }
 
 
-def plain(box, text: str, size: int, *, bold=False, color=BLACK, align=PP_ALIGN.LEFT) -> None:
+def plain(
+    box,
+    text: str,
+    size: int,
+    *,
+    bold=False,
+    color=BLACK,
+    align=PP_ALIGN.LEFT,
+    allow_newlines: bool = False,
+) -> None:
+    reject_manual_newline(text, f"plain({getattr(box, 'name', 'textbox')})", allow_newlines=allow_newlines)
     tf = box.text_frame
     tf.clear()
     tf.word_wrap = True
@@ -1524,9 +1543,9 @@ def cover(prs):
     band.fill.fore_color.rgb = BLUE
     band.line.fill.background()
     title = add_box(slide, 0.0, 3.05, 13.33, 0.85)
-    plain(title, "Multi-UAV Coverage Path Planning\nfor Structural Inspection", 30, bold=True, align=PP_ALIGN.CENTER)
+    plain(title, "Multi-UAV Coverage Path Planning\nfor Structural Inspection", 30, bold=True, align=PP_ALIGN.CENTER, allow_newlines=True)
     subtitle = add_box(slide, 0.0, 4.02, 13.33, 1.05)
-    plain(subtitle, "Wei Jing, Di Deng, Yan Wu, Kenji Shimada\nIROS 2020 / arXiv:2007.13065", 18, align=PP_ALIGN.CENTER)
+    plain(subtitle, "Wei Jing, Di Deng, Yan Wu, Kenji Shimada\nIROS 2020 / arXiv:2007.13065", 18, align=PP_ALIGN.CENTER, allow_newlines=True)
     date = add_box(slide, 5.50, 6.62, 2.35, 0.45)
     plain(date, "2026年5月6日", 18, align=PP_ALIGN.CENTER)
     return slide

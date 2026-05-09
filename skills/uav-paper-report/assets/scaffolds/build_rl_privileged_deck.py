@@ -119,7 +119,24 @@ def add_runs(paragraph, text: str, size: float, *, bold: bool = False, terms: li
         set_run_font(run, size, bold=bold or marked, color=RED if marked else BLACK)
 
 
-def plain(box, text: str, size: float, *, bold: bool = False, color: RGBColor = BLACK, align=PP_ALIGN.LEFT) -> None:
+def reject_manual_newline(text: str, context: str, *, allow_newlines: bool = False) -> None:
+    if "\n" in text and not allow_newlines:
+        raise ValueError(f"{context}: manual newline is not allowed in body text")
+    if "\n" in text and any(not part.strip() for part in text.split("\n")):
+        raise ValueError(f"{context}: empty line inside manual line break")
+
+
+def plain(
+    box,
+    text: str,
+    size: float,
+    *,
+    bold: bool = False,
+    color: RGBColor = BLACK,
+    align=PP_ALIGN.LEFT,
+    allow_newlines: bool = False,
+) -> None:
+    reject_manual_newline(text, f"plain({getattr(box, 'name', 'textbox')})", allow_newlines=allow_newlines)
     tf = box.text_frame
     tf.clear()
     tf.word_wrap = True
@@ -149,7 +166,8 @@ def set_textbox(
     tf.margin_top = Inches(0)
     tf.margin_bottom = Inches(0)
     for idx, item in enumerate(lines):
-        text = item["text"].replace("\n", " ")
+        text = item["text"]
+        reject_manual_newline(text, f"bullet {idx + 1} in {getattr(box, 'name', 'textbox')}")
         level = item.get("level", 0)
         p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
         p.alignment = PP_ALIGN.LEFT
@@ -314,7 +332,17 @@ def metric_row(slide, items: list[tuple[str, str, str]], left: float, top: float
         plain(note_box, note, size - 3.6, color=BLACK, align=PP_ALIGN.CENTER)
 
 
-def diagram_box(slide, text: str, left: float, top: float, width: float, height: float, *, fill=LIGHT_BLUE, border=BLUE):
+def diagram_box(
+    slide,
+    text: str | list[str],
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    *,
+    fill=LIGHT_BLUE,
+    border=BLUE,
+):
     shp = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
     set_shape_name(shp, "DIAG_BOX")
     shp.fill.solid()
@@ -332,7 +360,10 @@ def diagram_box(slide, text: str, left: float, top: float, width: float, height:
     p.alignment = PP_ALIGN.CENTER
     p.space_after = Pt(0)
     p.line_spacing = 0.95
-    for idx, part in enumerate(text.split("\n")):
+    parts = text if isinstance(text, list) else text.split("\n")
+    if any(not part.strip() for part in parts):
+        raise ValueError(f"diagram_box({getattr(shp, 'name', 'shape')}): empty line inside diagram label")
+    for idx, part in enumerate(parts):
         if idx:
             p.add_line_break()
         r = p.add_run()
@@ -358,7 +389,7 @@ def cover(prs: Presentation) -> None:
     band.fill.fore_color.rgb = BLUE
     band.line.fill.background()
     title = add_box(slide, 0.44, 2.82, 12.46, 1.14)
-    plain(title, "Quadrotor Navigation using Reinforcement Learning\nwith Privileged Information", 29.0, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
+    plain(title, "Quadrotor Navigation using Reinforcement Learning\nwith Privileged Information", 29.0, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER, allow_newlines=True)
     subtitle = add_box(slide, 0.0, 4.18, 13.33, 0.74)
     plain(subtitle, "Lee et al. / arXiv:2509.08177v2 / 2025", 18.2, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
     date = add_box(slide, 5.50, 6.62, 2.35, 0.45)
@@ -490,14 +521,14 @@ def overview_slide(prs):
     top = add_box(slide, 0.72, 1.78, 11.90, 0.70)
     set_textbox(top, [{"level": 0, "text": "训练闭环把可微动力学展开为时间序列，通过损失函数对策略参数反向传播；部署闭环只保留神经策略和低层控制器。"}], default_size=18.6)
     y = 3.02
-    diagram_box(slide, "深度图\n64×64", 0.76, y, 1.58, 0.74)
-    diagram_box(slide, "目标信息\nv_goal, d_goal", 0.76, y + 1.04, 1.58, 0.74)
-    diagram_box(slide, "状态估计\nv, R", 0.76, y + 2.08, 1.58, 0.74)
-    diagram_box(slide, "特征抽取\nLayerNorm", 3.04, y + 0.78, 1.68, 0.92)
-    diagram_box(slide, "GRU 记忆\nh_k", 5.26, y + 0.78, 1.52, 0.92)
-    diagram_box(slide, "动作输出\nt_k, ψ_k", 7.30, y + 0.78, 1.54, 0.92, fill=LIGHT_RED, border=RED)
-    diagram_box(slide, "可微动力学\ns_{k+1}=f(s_k,u_k)", 9.34, y + 0.78, 2.10, 0.92)
-    diagram_box(slide, "损失累积\nL = Σ λ_i L_i", 5.76, y + 2.15, 2.20, 0.82, fill=RGBColor(248, 248, 248), border=GRAY)
+    diagram_box(slide, ["深度图", "64×64"], 0.76, y, 1.58, 0.74)
+    diagram_box(slide, ["目标信息", "v_goal, d_goal"], 0.76, y + 1.04, 1.58, 0.74)
+    diagram_box(slide, ["状态估计", "v, R"], 0.76, y + 2.08, 1.58, 0.74)
+    diagram_box(slide, ["特征抽取", "LayerNorm"], 3.04, y + 0.78, 1.68, 0.92)
+    diagram_box(slide, ["GRU 记忆", "h_k"], 5.26, y + 0.78, 1.52, 0.92)
+    diagram_box(slide, ["动作输出", "t_k, ψ_k"], 7.30, y + 0.78, 1.54, 0.92, fill=LIGHT_RED, border=RED)
+    diagram_box(slide, ["可微动力学", "s_{k+1}=f(s_k,u_k)"], 9.34, y + 0.78, 2.10, 0.92)
+    diagram_box(slide, ["损失累积", "L = Σ λ_i L_i"], 5.76, y + 2.15, 2.20, 0.82, fill=RGBColor(248, 248, 248), border=GRAY)
     for yy in [y + 0.37, y + 1.41, y + 2.45]:
         connector(slide, 2.34, yy, 3.04, y + 1.24)
     connector(slide, 4.72, y + 1.24, 5.26, y + 1.24)
@@ -546,15 +577,15 @@ def network_slide(prs):
     top = add_box(slide, 0.72, 1.78, 11.88, 0.76)
     set_textbox(top, [{"level": 0, "text": "网络把视觉、目标和状态编码到同一 192 维潜变量，再用 GRU 维持时序一致性并输出控制动作。"}], default_size=18.7)
     y = 3.08
-    diagram_box(slide, "Depth\n64×64", 0.78, y, 1.28, 0.70)
-    diagram_box(slide, "Conv + Pool\n视觉特征", 2.62, y, 1.64, 0.70)
-    diagram_box(slide, "Target\n速度+距离", 0.78, y + 1.10, 1.28, 0.70)
-    diagram_box(slide, "Linear\n目标特征", 2.62, y + 1.10, 1.64, 0.70)
-    diagram_box(slide, "State\n速度+姿态", 0.78, y + 2.20, 1.28, 0.70)
-    diagram_box(slide, "Linear\n状态特征", 2.62, y + 2.20, 1.64, 0.70)
-    diagram_box(slide, "求和 + LayerNorm\n(B, 192)", 4.96, y + 1.04, 1.90, 0.82)
-    diagram_box(slide, "GRUCell\nh_{k-1}→h_k", 7.42, y + 1.04, 1.72, 0.82)
-    diagram_box(slide, "Linear 输出\n[t_k, ψ_k]", 9.78, y + 1.04, 1.72, 0.82, fill=LIGHT_RED, border=RED)
+    diagram_box(slide, ["Depth", "64×64"], 0.78, y, 1.28, 0.70)
+    diagram_box(slide, ["Conv + Pool", "视觉特征"], 2.62, y, 1.64, 0.70)
+    diagram_box(slide, ["Target", "速度+距离"], 0.78, y + 1.10, 1.28, 0.70)
+    diagram_box(slide, ["Linear", "目标特征"], 2.62, y + 1.10, 1.64, 0.70)
+    diagram_box(slide, ["State", "速度+姿态"], 0.78, y + 2.20, 1.28, 0.70)
+    diagram_box(slide, ["Linear", "状态特征"], 2.62, y + 2.20, 1.64, 0.70)
+    diagram_box(slide, ["求和 + LayerNorm", "(B, 192)"], 4.96, y + 1.04, 1.90, 0.82)
+    diagram_box(slide, ["GRUCell", "h_{k-1}→h_k"], 7.42, y + 1.04, 1.72, 0.82)
+    diagram_box(slide, ["Linear 输出", "[t_k, ψ_k]"], 9.78, y + 1.04, 1.72, 0.82, fill=LIGHT_RED, border=RED)
     for yy in [y + 0.35, y + 1.45, y + 2.55]:
         connector(slide, 2.06, yy, 2.62, yy)
         connector(slide, 4.26, yy, 4.96, y + 1.45)

@@ -16,6 +16,8 @@ NS = {
 DEFAULT_SLIDE_W = 12191695
 DEFAULT_SLIDE_H = 6858000
 EMU_TOL = 10000
+EMU_PER_INCH = 914400
+PT_PER_INCH = 72
 
 SUSPICIOUS = [
     "报告口径",
@@ -52,6 +54,8 @@ BULLET_LEVELS = {
     "–": "tertiary",
     "-": "tertiary",
 }
+CONTENT_SHAPE_NAMES = ("MATH_",)
+INTENTIONAL_BREAK_SHAPE_NAMES = ("DIAG_",)
 
 
 def bullet_level(text: str) -> str | None:
@@ -119,6 +123,33 @@ def iter_text_bodies(pptx: Path):
                 yield slide_no, shape_name, texts, paragraphs
 
 
+def iter_math_text_bodies(pptx: Path):
+    with zipfile.ZipFile(pptx) as zf:
+        for name in slide_names(zf):
+            slide_no = int(re.search(r"slide(\d+)\.xml", name).group(1))
+            root = ET.fromstring(zf.read(name))
+            for shape in root.findall(".//p:sp", NS):
+                name_node = shape.find("./p:nvSpPr/p:cNvPr", NS)
+                shape_name = name_node.get("name", "") if name_node is not None else ""
+                if not shape_name.startswith("MATH_"):
+                    continue
+                text_body = shape.find("./p:txBody", NS)
+                if text_body is None:
+                    continue
+                xfrm = shape.find(".//a:xfrm", NS)
+                width = None
+                if xfrm is not None:
+                    ext = xfrm.find("./a:ext", NS)
+                    if ext is not None:
+                        width = int(ext.get("cx", "0")) / EMU_PER_INCH
+                paragraphs = text_body.findall("./a:p", NS)
+                texts = [
+                    "".join(node.text or "" for node in paragraph.findall(".//a:t", NS))
+                    for paragraph in paragraphs
+                ]
+                yield slide_no, shape_name, texts, paragraphs, width
+
+
 def iter_shape_bounds(pptx: Path):
     with zipfile.ZipFile(pptx) as zf:
         width, height = slide_size(zf)
@@ -143,6 +174,33 @@ def iter_shape_bounds(pptx: Path):
                 yield slide_no, shape_name, left, top, w, h, width, height
 
 
+def iter_content_bounds(pptx: Path):
+    with zipfile.ZipFile(pptx) as zf:
+        for name in slide_names(zf):
+            slide_no = int(re.search(r"slide(\d+)\.xml", name).group(1))
+            root = ET.fromstring(zf.read(name))
+            nodes = root.findall(".//p:sp", NS) + root.findall(".//p:pic", NS) + root.findall(".//p:graphicFrame", NS)
+            for idx, node in enumerate(nodes):
+                name_node = node.find(".//p:cNvPr", NS)
+                shape_name = name_node.get("name", f"shape-{idx}") if name_node is not None else f"shape-{idx}"
+                text = "".join(t.text or "" for t in node.findall(".//a:t", NS)).strip()
+                is_content = bool(text) or node.tag.endswith("pic") or node.tag.endswith("graphicFrame")
+                if not is_content and not shape_name.startswith(CONTENT_SHAPE_NAMES):
+                    continue
+                xfrm = node.find(".//a:xfrm", NS)
+                if xfrm is None:
+                    continue
+                off = xfrm.find("./a:off", NS)
+                ext = xfrm.find("./a:ext", NS)
+                if off is None or ext is None:
+                    continue
+                left = int(off.get("x", "0")) / EMU_PER_INCH
+                top = int(off.get("y", "0")) / EMU_PER_INCH
+                right = left + int(ext.get("cx", "0")) / EMU_PER_INCH
+                bottom = top + int(ext.get("cy", "0")) / EMU_PER_INCH
+                yield slide_no, shape_name, left, top, right, bottom
+
+
 def run_sizes(paragraph) -> list[float]:
     sizes = []
     for rpr in paragraph.findall(".//a:rPr", NS):
@@ -152,8 +210,66 @@ def run_sizes(paragraph) -> list[float]:
     return sizes
 
 
+def paragraph_spacing_pt(paragraph) -> tuple[float, float]:
+    ppr = paragraph.find("./a:pPr", NS)
+    if ppr is None:
+        return 0.0, 0.0
+
+    def read_spacing(tag: str) -> float:
+        node = ppr.find(f"./a:{tag}/a:spcPts", NS)
+        if node is not None:
+            raw = node.get("val")
+            if raw and raw.lstrip("-").isdigit():
+                return int(raw) / 100.0
+        return 0.0
+
+    return read_spacing("spcBef"), read_spacing("spcAft")
+
+
+def has_manual_break(paragraph) -> bool:
+    return paragraph.find(".//a:br", NS) is not None
+
+
+def allows_manual_break(shape_name: str) -> bool:
+    return shape_name.startswith(INTENTIONAL_BREAK_SHAPE_NAMES)
+
+
+def estimated_text_width_pt(text: str, size: float) -> float:
+    units = 0.0
+    for ch in re.sub(r"\s+", " ", text).strip():
+        if "\u4e00" <= ch <= "\u9fff":
+            units += 0.95
+        elif ch.isspace():
+            units += 0.28
+        elif ch in ",.;:()[]{}+-=≤≥≈→⇒⇔∑∫‖·/":
+            units += 0.36
+        elif ch in "ilI|":
+            units += 0.26
+        elif ch in "MWQ@":
+            units += 0.78
+        else:
+            units += 0.50
+    return units * size
+
+
 def range_text(values: list[float]) -> str:
     return f"{min(values):.1f}-{max(values):.1f} pt"
+
+
+def overlap_area(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+
+
+def should_check_overlap(name: str, box: tuple[float, float, float, float]) -> bool:
+    left, top, right, bottom = box
+    if top < 1.0 or bottom > 7.08:
+        return False
+    if right - left < 0.05 or bottom - top < 0.05:
+        return False
+    lowered = name.lower()
+    if "connector" in lowered or "rectangle" in lowered and not name.startswith("MATH_"):
+        return False
+    return True
 
 
 def main() -> int:
@@ -175,6 +291,9 @@ def main() -> int:
     parser.add_argument("--tertiary-max", type=float, default=16.9)
     parser.add_argument("--max-level-spread", type=float, default=0.8)
     parser.add_argument("--max-run-spread", type=float, default=1.0)
+    parser.add_argument("--max-body-space-after", type=float, default=3.0)
+    parser.add_argument("--max-body-space-before", type=float, default=0.5)
+    parser.add_argument("--max-formula-width-factor", type=float, default=1.05)
     args = parser.parse_args()
 
     pptx_files = collect_pptx(args.paths)
@@ -211,11 +330,24 @@ def main() -> int:
             if texts and any(text.strip() for text in texts) and any(not text.strip() for text in texts):
                 warnings.append(f"{prefix} slide {slide_no:02d}: mixed empty paragraph in `{shape_name}`")
             for text, paragraph in zip(texts, paragraphs):
-                if "\n" in text and slide_no not in (1, last_slide):
+                if "\n" in text and slide_no not in (1, last_slide) and not allows_manual_break(shape_name):
                     warnings.append(f"{prefix} slide {slide_no:02d}: manual newline in `{shape_name}`")
+                if has_manual_break(paragraph) and slide_no not in (1, last_slide) and not allows_manual_break(shape_name):
+                    warnings.append(f"{prefix} slide {slide_no:02d}: manual line break element in `{shape_name}`")
                 stripped = text.strip()
                 if not stripped:
                     continue
+                space_before, space_after = paragraph_spacing_pt(paragraph)
+                if space_before > args.max_body_space_before:
+                    warnings.append(
+                        f"{prefix} slide {slide_no:02d}: body paragraph has excessive space_before "
+                        f"({space_before:.1f} pt) in `{shape_name}`"
+                    )
+                if space_after > args.max_body_space_after:
+                    warnings.append(
+                        f"{prefix} slide {slide_no:02d}: body paragraph has excessive space_after "
+                        f"({space_after:.1f} pt) in `{shape_name}`"
+                    )
                 if stripped in {"●", "•", "–", "-"}:
                     warnings.append(f"{prefix} slide {slide_no:02d}: standalone bullet marker")
                 if BODY_LINE_BREAK.search(text) and slide_no not in (1, last_slide):
@@ -245,6 +377,26 @@ def main() -> int:
                                 f"({range_text(sizes)})"
                             )
 
+        if args.strict_body_hierarchy:
+            for slide_no, shape_name, texts, paragraphs, width_in in iter_math_text_bodies(pptx):
+                for text, paragraph in zip(texts, paragraphs):
+                    if has_manual_break(paragraph):
+                        warnings.append(f"{prefix} slide {slide_no:02d}: manual line break element in `{shape_name}`")
+                    if "\n" in text:
+                        warnings.append(f"{prefix} slide {slide_no:02d}: manual newline in `{shape_name}`")
+                    stripped = text.strip()
+                    if not stripped or width_in is None or not shape_name.startswith("MATH_BODY"):
+                        continue
+                    sizes = run_sizes(paragraph)
+                    size = max(sizes) if sizes else 19.0
+                    estimated = estimated_text_width_pt(stripped, size)
+                    available = width_in * PT_PER_INCH
+                    if estimated > available * args.max_formula_width_factor:
+                        warnings.append(
+                            f"{prefix} slide {slide_no:02d}: formula row may wrap or overflow in `{shape_name}` "
+                            f"({estimated:.0f} pt estimated > {available:.0f} pt available)"
+                        )
+
         for slide_no, shape_name, left, top, w, h, slide_w, slide_h in iter_shape_bounds(pptx):
             if (
                 left < -EMU_TOL
@@ -253,6 +405,30 @@ def main() -> int:
                 or top + h > slide_h + EMU_TOL
             ):
                 warnings.append(f"{prefix} slide {slide_no:02d}: shape `{shape_name}` exceeds slide bounds")
+
+        if args.strict_body_hierarchy:
+            slide_items: dict[int, list[tuple[str, tuple[float, float, float, float]]]] = {}
+            for slide_no, shape_name, left, top, right, bottom in iter_content_bounds(pptx):
+                box = (left, top, right, bottom)
+                if should_check_overlap(shape_name, box):
+                    slide_items.setdefault(slide_no, []).append((shape_name, box))
+            for slide_no, items in slide_items.items():
+                for i in range(len(items)):
+                    name_a, box_a = items[i]
+                    for j in range(i + 1, len(items)):
+                        name_b, box_b = items[j]
+                        area = overlap_area(box_a, box_b)
+                        if area <= 0.015:
+                            continue
+                        smaller = min(
+                            max(0.001, (box_a[2] - box_a[0]) * (box_a[3] - box_a[1])),
+                            max(0.001, (box_b[2] - box_b[0]) * (box_b[3] - box_b[1])),
+                        )
+                        if area / smaller > 0.08:
+                            warnings.append(
+                                f"{prefix} slide {slide_no:02d}: content shapes overlap "
+                                f"`{name_a}` and `{name_b}`"
+                            )
 
         if args.strict_body_hierarchy:
             for level, values in level_sizes.items():

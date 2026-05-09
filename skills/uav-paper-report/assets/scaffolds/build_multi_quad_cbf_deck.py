@@ -37,8 +37,8 @@ def add_box(slide, left, top, width, height):
     return base.add_box(slide, left, top, width, height)
 
 
-def plain(box, text, size, *, bold=False, color=BLACK, align=PP_ALIGN.LEFT):
-    base.plain(box, text, size, bold=bold, color=color, align=align)
+def plain(box, text, size, *, bold=False, color=BLACK, align=PP_ALIGN.LEFT, allow_newlines=False):
+    base.plain(box, text, size, bold=bold, color=color, align=align, allow_newlines=allow_newlines)
 
 
 def set_textbox(box, lines, *, default_size=18.8, space_after=0.06, line_spacing=0.96):
@@ -127,7 +127,7 @@ def cover(prs):
     band.fill.fore_color.rgb = BLUE
     band.line.fill.background()
     title = add_box(slide, 0.42, 2.82, 12.50, 1.20)
-    plain(title, "Optimal Trajectory Planning for Cooperative Manipulation\nwith Multiple Quadrotors Using CBFs", 28.6, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
+    plain(title, "Optimal Trajectory Planning for Cooperative Manipulation\nwith Multiple Quadrotors Using CBFs", 28.6, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER, allow_newlines=True)
     subtitle = add_box(slide, 0.0, 4.20, 13.33, 0.72)
     plain(subtitle, "Pallar, Li, Sarvaiya and Loianno / arXiv:2503.10695v2 / 2025", 18.2, bold=True, color=RGBColor(255, 255, 255), align=PP_ALIGN.CENTER)
     date = add_box(slide, 5.50, 6.62, 2.35, 0.45)
@@ -445,11 +445,11 @@ def algorithm_slide(prs):
     ], default_size=18.5, space_after=0.03)
     add_rule(slide, 0.76, 2.70, 11.80)
     nodes = [
-        ("当前状态\nX(t0)", 0.90, 3.18, 1.75),
-        ("A* 参考\n载荷路径", 3.00, 3.18, 1.80),
-        ("MPC 优化\nX0...XN, U0...UN-1", 5.20, 3.05, 2.22),
-        ("CBF 约束\n多面体避障", 7.94, 3.18, 1.92),
-        ("执行首个输入\n重规划", 10.28, 3.18, 1.74),
+        (["当前状态", "X(t0)"], 0.90, 3.18, 1.75),
+        (["A* 参考", "载荷路径"], 3.00, 3.18, 1.80),
+        (["MPC 优化", "X0...XN, U0...UN-1"], 5.20, 3.05, 2.22),
+        (["CBF 约束", "多面体避障"], 7.94, 3.18, 1.92),
+        (["执行首个输入", "重规划"], 10.28, 3.18, 1.74),
     ]
     for text, x, y, w in nodes:
         base.diagram_box(slide, text, x, y, w, 0.78, fill=LIGHT_BLUE, border=BLUE)

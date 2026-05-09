@@ -10,12 +10,15 @@ Use this checklist before delivering a deck.
 - Final outputs include PPTX, PDF, preview grid, and slide PNGs.
 - Public or uploaded PPTX assets have been sanitized with `scripts/sanitize_pptx_privacy.py`.
 - Privacy scan reports no personal names, editor metadata, notes slides, comments, custom properties, or visible presenter placeholders containing real names.
+- Multi-template public examples pass `scripts/run_template_matrix.py`; local template generalization cases pass `scripts/run_template_smoke.py` when testing new template families.
 
 ## Visual Review
 
 Check the preview grid first, then individual risk slides.
 
 - Cover and thanks slide use consistent accepted blue.
+- When adapting a template, visible master placeholders such as `单击此处...`, `Click to...`, dates, footers, and slide-number placeholders have been removed before adding content.
+- Slide regions are computed from the actual deck size; no layout assumes a fixed 13.33 x 7.5 canvas.
 - No text overlaps other text, images, tables, formulas, or rules.
 - No text visually touches a rule, metric row, image, table, or formula after LibreOffice PDF export.
 - No image/text collision.

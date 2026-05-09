@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,7 @@ SCAN = ROOT / "scripts" / "scan_rendered_slides.py"
 
 WINDOWS_SOFFICE = Path(r"C:\Program Files\LibreOffice\program\soffice.com")
 WINDOWS_SOFFICE_EXE = Path(r"C:\Program Files\LibreOffice\program\soffice.exe")
+CODEX_RUNTIME_PYTHON = Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "python" / "python.exe"
 
 
 def resolve_case_path(matrix_path: Path, raw: str) -> Path:
@@ -40,15 +42,34 @@ def resolve_optional_path(matrix_path: Path, raw: str | None) -> Path | None:
     return alt if alt.exists() else path
 
 
+def resolve_baseline_pdf(case_id: str, baseline_dir: Path | None) -> Path | None:
+    if baseline_dir is None:
+        return None
+    candidate = (baseline_dir / case_id / "input.pdf").resolve()
+    return candidate if candidate.exists() else None
+
+
 def soffice_path() -> str | None:
-    found = shutil.which("soffice") or shutil.which("soffice.com")
+    configured = os.environ.get("PAPER2PPT_SOFFICE")
+    if configured:
+        return configured
+    found = shutil.which("soffice.com") or shutil.which("soffice")
     if found:
         return found
-    if WINDOWS_SOFFICE_EXE.exists():
-        return str(WINDOWS_SOFFICE_EXE)
     if WINDOWS_SOFFICE.exists():
         return str(WINDOWS_SOFFICE)
+    if WINDOWS_SOFFICE_EXE.exists():
+        return str(WINDOWS_SOFFICE_EXE)
     return None
+
+
+def script_python() -> str:
+    configured = os.environ.get("PAPER2PPT_PYTHON")
+    if configured:
+        return configured
+    if CODEX_RUNTIME_PYTHON.exists():
+        return str(CODEX_RUNTIME_PYTHON)
+    return sys.executable
 
 
 def run(
@@ -72,35 +93,60 @@ def run(
         return subprocess.CompletedProcess(cmd, 124, output + f"\nTIMEOUT after {timeout}s\n")
 
 
+def assert_readable_file(path: Path, label: str) -> None:
+    try:
+        with path.open("rb") as handle:
+            handle.read(4)
+    except OSError as exc:
+        raise RuntimeError(f"{label} is not readable: {path} ({exc})") from exc
+
+
 def export_pdf(pptx: Path, out_dir: Path, office: str, *, timeout: int) -> Path:
     pptx = pptx.resolve()
+    assert_readable_file(pptx, "source PPTX")
     out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    staged = out_dir / "input.pptx"
-    shutil.copy2(pptx, staged)
-    profile = out_dir / "lo-profile"
+    stage_root = workspace_root()
+    stage_name = f"paper2ppt-matrix-{os.getpid()}"
+    staged = stage_root / f"{stage_name}.pptx"
+    staged_pdf = stage_root / f"{stage_name}.pdf"
+    profile = stage_root / "lo-profile-matrix-global"
     profile.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        office,
-        "--headless",
-        f"-env:UserInstallation=file:///{profile.as_posix()}",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        str(out_dir),
-        str(staged),
-    ]
-    proc = run(cmd, timeout=timeout)
-    print(proc.stdout)
-    if proc.returncode != 0:
-        raise RuntimeError(f"LibreOffice export failed for {pptx.name}")
-    pdf = out_dir / f"{staged.stem}.pdf"
-    if not pdf.exists():
-        matches = sorted(out_dir.glob("*.pdf"))
-        if not matches:
-            raise RuntimeError(f"LibreOffice did not create a PDF for {pptx.name}")
-        pdf = matches[-1]
-    return pdf
+    for transient in (staged, staged_pdf):
+        if transient.exists():
+            transient.unlink()
+    try:
+        shutil.copy2(pptx, staged)
+        assert_readable_file(staged, "staged PPTX")
+        cmd = [
+            office,
+            "--headless",
+            f"-env:UserInstallation=file:///{profile.as_posix()}",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(stage_root),
+            str(staged),
+        ]
+        proc = run(cmd, timeout=timeout)
+        print(proc.stdout)
+        if proc.returncode != 0:
+            raise RuntimeError(f"LibreOffice export failed for {pptx.name}")
+        if not staged_pdf.exists():
+            matches = sorted(stage_root.glob(f"{stage_name}*.pdf"))
+            if not matches:
+                raise RuntimeError(f"LibreOffice did not create a PDF for {pptx.name}")
+            staged_pdf = matches[-1]
+        final_pdf = out_dir / "input.pdf"
+        shutil.copy2(staged_pdf, final_pdf)
+        return final_pdf
+    finally:
+        for transient in (staged, staged_pdf):
+            try:
+                if transient.exists():
+                    transient.unlink()
+            except OSError:
+                pass
 
 
 def main() -> int:
@@ -109,6 +155,14 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, default=ROOT / "out" / "template-matrix")
     parser.add_argument("--case", action="append", dest="case_ids", help="Run only the named case id.")
     parser.add_argument("--skip-render", action="store_true", help="Only run PPTX audits.")
+    parser.add_argument(
+        "--baseline-dir",
+        type=Path,
+        help=(
+            "Use existing per-case input.pdf files from this directory for render/scan. "
+            "This is an explicit fallback for environments where LibreOffice export is unavailable."
+        ),
+    )
     parser.add_argument("--keep-going", action="store_true", help="Continue after a failed case.")
     parser.add_argument("--export-timeout", type=int, default=90, help="LibreOffice export timeout per case in seconds.")
     args = parser.parse_args()
@@ -132,6 +186,7 @@ def main() -> int:
 
     failures: list[str] = []
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    py = script_python()
 
     for case in cases:
         case_id = case["id"]
@@ -145,9 +200,18 @@ def main() -> int:
             if not args.keep_going:
                 break
             continue
+        try:
+            assert_readable_file(pptx, "case PPTX")
+        except RuntimeError as exc:
+            message = f"{case_id}: {exc}"
+            print(message)
+            failures.append(message)
+            if not args.keep_going:
+                break
+            continue
 
         proc = run([
-            sys.executable,
+            py,
             str(AUDIT),
             str(pptx),
             "--strict-body-hierarchy",
@@ -168,12 +232,16 @@ def main() -> int:
         case_dir = args.out_dir / case_id
         pdf = None
         legacy_pdf = resolve_optional_path(matrix_path, case.get("pdf"))
+        baseline_pdf = resolve_baseline_pdf(case_id, args.baseline_dir)
         if case.get("legacy_pdf_baseline") and (not legacy_pdf or not legacy_pdf.exists()):
             print("legacy rendered PDF baseline is not bundled; running PPTX audit only for this reference case.")
             continue
         if case.get("legacy_pdf_baseline") and legacy_pdf and legacy_pdf.exists():
             print(f"using legacy rendered PDF baseline: {legacy_pdf}", flush=True)
             pdf = legacy_pdf
+        elif baseline_pdf:
+            print(f"using explicit rendered PDF baseline: {baseline_pdf}", flush=True)
+            pdf = baseline_pdf
         else:
             try:
                 pdf = export_pdf(pptx, case_dir, office or "soffice", timeout=args.export_timeout)
@@ -186,7 +254,7 @@ def main() -> int:
         png_dir = case_dir / "png"
         preview = case_dir / "preview-grid.png"
         proc = run([
-            sys.executable,
+            py,
             str(RENDER),
             str(pdf),
             "--out-dir",
@@ -201,7 +269,9 @@ def main() -> int:
                 break
             continue
 
-        scan_cmd = [sys.executable, str(SCAN), str(png_dir), "--fail-on-warning"]
+        scan_cmd = [py, str(SCAN), str(png_dir), "--fail-on-warning"]
+        if case.get("ignore_edge_slides", True):
+            scan_cmd.append("--ignore-edge-slides")
         if "scan_blank_warn" in case:
             scan_cmd.extend(["--blank-warn", str(case["scan_blank_warn"])])
         proc = run(scan_cmd, timeout=60)

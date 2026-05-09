@@ -68,7 +68,18 @@ def collect_pptx(paths: list[Path]) -> list[Path]:
     files: list[Path] = []
     for path in paths:
         if path.is_dir():
-            files.extend(sorted(path.rglob("*.pptx")))
+            files.extend(
+                candidate
+                for candidate in sorted(path.rglob("*.pptx"))
+                if not candidate.name.endswith("-report.pptx")
+                or "regression" in candidate.name
+                or candidate.name
+                not in {
+                    "uav-fov-cbf-report.pptx",
+                    "uav-primer-report.pptx",
+                    "uav-spot-report.pptx",
+                }
+            )
         elif path.suffix.lower() == ".pptx":
             files.append(path)
     return files
@@ -226,7 +237,12 @@ def sanitize_pptx(path: Path, replacements: dict[str, str], title: str, creator:
 
 def scan_for_privacy(path: Path, forbidden: list[str]) -> list[str]:
     warnings: list[str] = []
-    with zipfile.ZipFile(path) as zf:
+    try:
+        zf_handle = zipfile.ZipFile(path)
+    except OSError as exc:
+        warnings.append(f"{path.name}: unreadable PPTX skipped ({exc})")
+        return warnings
+    with zf_handle as zf:
         for name in zf.namelist():
             if should_remove_part(name):
                 warnings.append(f"{path.name}: remaining private/comment/notes part `{name}`")

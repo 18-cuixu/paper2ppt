@@ -1,0 +1,64 @@
+{
+  "papers": [
+    {
+      "id": "primitive-planner-2025",
+      "title": "Primitive-Planner: An Ultra Lightweight Quadrotor Planner with Time-optimal Primitives",
+      "source": "https://arxiv.org/abs/2502.16882",
+      "year": 2025,
+      "topic": "轻量级四旋翼时间最优运动基元规划",
+      "problem": "四旋翼在线轨迹规划需要同时满足动力学可行性、避障安全性和计算轻量化，传统采样或优化方法在高频重规划时容易出现计算负担。",
+      "main_claim": "本文将时间最优运动基元离线构建为候选库，并用确定性耗时的碰撞检测与代价选择完成在线重规划。",
+      "bullets": [
+        "● 离线生成满足动力学约束的时间最优运动基元，在线阶段只在可行候选中做快速筛选。",
+        "● 碰撞检测不依赖采样分辨率，计算时间更加稳定，适合机载高频规划。",
+        "● 局部基元之间通过坐标变换保持全局轨迹连续，降低频繁重规划造成的轨迹抖动。"
+      ],
+      "formula_rows": [
+        "p(t)=p0+v0t+0.5 a t^2",
+        "J(pi)=T(pi)+lambda_c C(pi)+lambda_s S(pi)",
+        "pi*=arg min J(pi),  pi in P_safe"
+      ],
+      "terms": [
+        ["P_safe", "通过确定性碰撞检测后的安全基元集合"],
+        ["T(pi)", "候选轨迹的飞行时间"],
+        ["C(pi)", "障碍物安全裕度代价"],
+        ["S(pi)", "与上一段轨迹的连续性代价"]
+      ],
+      "metrics": [
+        ["在线负担", "低"],
+        ["轨迹质量", "时间最优候选"],
+        ["验证方式", "基准测试与实机实验"]
+      ]
+    },
+    {
+      "id": "safety-assurance-2025",
+      "title": "Safety Assurance for Quadrotor Kinodynamic Motion Planning",
+      "source": "https://arxiv.org/abs/2507.17679",
+      "year": 2025,
+      "topic": "四旋翼运动规划中的运行时安全保证",
+      "problem": "碰撞自由路径并不等价于执行过程安全，四旋翼在跟踪轨迹时仍可能因为输入约束或状态约束违反而离开安全工作区域。",
+      "main_claim": "本文在运动规划框架中加入运行时安全保证滤波器，将几何路径、LQR 跟踪和输入投影组合到同一安全闭环中。",
+      "bullets": [
+        "● 高层采样规划器先生成三维空间中的碰撞自由路径，为低层跟踪提供几何参考。",
+        "● LQR 控制器负责轨迹跟踪，安全滤波器在执行前修正可能违反约束的控制输入。",
+        "● 低层滤波将安全约束写成在线优化，使控制输入保持在允许集合内。"
+      ],
+      "formula_rows": [
+        "u_safe=arg min ||u-u_nom||^2",
+        "s.t.  h(x)>=0,  dh(x)/dt+alpha h(x)>=0",
+        "x_dot=f(x)+g(x)u_safe"
+      ],
+      "terms": [
+        ["u_nom", "LQR 给出的名义跟踪控制量"],
+        ["u_safe", "经过安全滤波后的实际控制量"],
+        ["h(x)", "描述安全工作区域的约束函数"],
+        ["alpha", "安全约束收敛速率参数"]
+      ],
+      "metrics": [
+        ["规划层", "采样式几何路径"],
+        ["控制层", "LQR 跟踪"],
+        ["安全层", "运行时输入滤波"]
+      ]
+    }
+  ]
+}

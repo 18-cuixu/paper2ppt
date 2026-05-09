@@ -1,0 +1,28 @@
+{
+  "templates": [
+    {
+      "id": "pptagent-beamer",
+      "path": "${PPTAGENT_TEMPLATE_ROOT}/beamer/source.pptx",
+      "audit_profile": "compact",
+      "theme": "blue"
+    },
+    {
+      "id": "pptagent-hit",
+      "path": "${PPTAGENT_TEMPLATE_ROOT}/hit/source.pptx",
+      "audit_profile": "compact",
+      "theme": "blue"
+    },
+    {
+      "id": "pptagent-thu",
+      "path": "${PPTAGENT_TEMPLATE_ROOT}/thu/source.pptx",
+      "audit_profile": "dense-visual",
+      "theme": "purple"
+    },
+    {
+      "id": "pptagent-ucas",
+      "path": "${PPTAGENT_TEMPLATE_ROOT}/ucas/source.pptx",
+      "audit_profile": "classic-large",
+      "theme": "red"
+    }
+  ]
+}

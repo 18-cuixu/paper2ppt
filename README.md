@@ -13,6 +13,10 @@
 - 新生成的报告建议使用 `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`，公开示例也已清理空文本体。
 - 新增多模板 profile 与回归矩阵：`compact`、`dense-visual`、`classic-large` 分别对应不同模板的固定字号层级，避免把模板差异误判成随意改字号。
 - 新增 `run_template_matrix.py`，可批量审计、渲染和扫描多个论文示例与模板风格；新生成结果的导出和渲染扫描仍是硬门槛。
+- 新增 `run_template_smoke.py`，用合成压力页在多套本地 PPTX 模板上测试页面尺寸、母版占位符、宽图、窄图、表格、公式、长英文术语和空白区域。
+- 新增 `repair_pptx_layout.py`，用于发布前批量移除装饰 shape 的空文本体、统一模板 profile 下的正文字号，并可显式修复正文手动换行。
+- 公开回归矩阵已扩展到 8 个论文/模板组合，新增 FoV-CBF、PRIMER 和 SPOT 三个最近论文案例；公开示例均通过 PPTX 审计，已验证 PDF baseline 可用于 PNG 渲染和空白扫描 fallback。
+- 本轮额外完成 4 套本地 PPTAgent 模板 × 2 篇近年 UAV 论文的 smoke 测试，8 个新生成用例均通过 PPTX 审计、LibreOffice 导出、PNG 渲染和渲染页扫描。
 - 生成后必须按顺序完成：PPTX 审计、LibreOffice 导出、PNG 渲染、渲染页扫描和风险页人工检查。
 
 `paper2ppt` 收录了一个用于论文汇报 PPT 生成与审查的 Codex Skill：`uav-paper-report`。它面向无人机、机器人、规划、SLAM、控制和自主系统方向的中文组会/论文汇报，目标是支持“给定论文 + 给定 PPT 模板/示例风格”的多模板生成，而不是固定在单一版式上。当前重点是让生成结果保持风格一致、内容密度足够、公式和图表可讲、图片裁剪干净，并通过渲染后的视觉 QA 反复检查。
@@ -28,6 +32,10 @@
 | RL 方法图 | RL 结果表 | CBF 公式排版 |
 | --- | --- | --- |
 | ![RL method diagram](skills/uav-paper-report/assets/screenshots/rl-method-diagram.jpg) | ![RL result table](skills/uav-paper-report/assets/screenshots/rl-result-table.jpg) | ![CBF formula layout](skills/uav-paper-report/assets/screenshots/cbf-formula-layout.jpg) |
+
+| FoV-CBF 新论文 | PRIMER 新论文 | SPOT 新论文 |
+| --- | --- | --- |
+| ![FoV-CBF preview grid](skills/uav-paper-report/assets/screenshots/fov-cbf-preview-grid.png) | ![PRIMER preview grid](skills/uav-paper-report/assets/screenshots/primer-preview-grid.png) | ![SPOT preview grid](skills/uav-paper-report/assets/screenshots/spot-preview-grid.png) |
 
 ### 仓库内容
 
@@ -60,11 +68,13 @@ paper2ppt/
 
 ### 当前进度
 
-- 已整理 5 份公开 AI 生成示例 PPTX，覆盖轨迹规划、强化学习导航、多机 CBF 规划、多机覆盖路径规划和深色模板适配等方向。
+- 已整理 8 份公开 AI 生成示例 PPTX，覆盖轨迹规划、强化学习导航、多机 CBF 规划、多机覆盖路径规划、深色模板适配、FoV-CBF、PRIMER 和 SPOT 等方向。
 - 已形成可复用的 `python-pptx` scaffold，包括封面/结尾、正文项目符号、公式行、原生表格、流程图、图片裁剪和指标条。
 - 已支持多模板风格迁移的工作流：先读取用户模板或示例 deck，再按其版式节奏生成新论文汇报。
 - 已加入严格 PPTX 审计：空文本体、正文手动换行、异常段落间距、窄公式长行、内容重叠、字体层级漂移和越界 shape。
-- 已加入多模板回归矩阵，当前覆盖 5 个论文/模板组合；最新质量基线会进行 PPTX 审计、LibreOffice 导出、PNG 渲染和空白扫描。
+- 已加入多模板回归矩阵，当前覆盖 8 个公开论文/模板组合；公开示例通过 PPTX 审计，渲染扫描可使用已验证 PDF baseline 复核。
+- 已加入模板 smoke 测试，当前用 2 篇近年 UAV 论文压力内容测试 4 套本地 PPTX 模板，覆盖 4:3、16:9、蓝色、红色、紫色和带母版占位符的模板。
+- 已加入通用修复脚本 `repair_pptx_layout.py`，用于发布前统一清理空文本体、正文字号漂移和正文手动换行。
 - 已加入隐私清理：发布前清理 PPTX 元数据、备注、批注和可见个人信息。
 
 ### 后续目标
@@ -117,7 +127,8 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 7. 运行文本审查和渲染扫描脚本。
 8. 人工检查公式页、图片页、表格页和本轮修改过的页面。
 9. 多模板测试时运行 `python .\skills\uav-paper-report\scripts\run_template_matrix.py --out-dir .\skills\uav-paper-report\out\template-matrix --keep-going`。
-10. 如果要提交到公开仓库，先运行隐私清理脚本并检查示例和生成结果 PPTX。
+10. 本地模板泛化测试时运行 `python .\skills\uav-paper-report\scripts\run_template_smoke.py --templates .\skills\uav-paper-report\assets\template-profiles\template-smoke.local.example.json --template-root <模板目录> --keep-going`。
+11. 如果要提交到公开仓库，先运行隐私清理脚本并检查示例和生成结果 PPTX。
 
 ### 质量规则
 
@@ -140,6 +151,8 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 - `scripts/render_pptx_previews.py`：把导出的 PDF 渲染为逐页 PNG 和 preview grid。
 - `scripts/scan_rendered_slides.py`：扫描空白过多、拥挤和异常空白带。
 - `scripts/run_template_matrix.py`：按 `assets/template-profiles/matrix.json` 批量测试多论文、多模板示例。
+- `scripts/run_template_smoke.py`：用压力论文内容在多套本地 PPTX 模板上批量生成、导出、渲染和扫描，用于验证模板泛化性。
+- `scripts/repair_pptx_layout.py`：发布前批量修复空文本体、模板 profile 下的正文字号漂移和正文手动换行。
 - `scripts/check_dependencies.py`：检查基础依赖。
 
 上传前建议执行：
@@ -152,8 +165,10 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 ### 示例
 
 - `assets/examples/`：AI 生成并检查过的示例 PPT。
-- `assets/examples/*.pptx`：已经验证过的示例 PPT。
+- `assets/examples/*.pptx`：已经验证过的 8 个示例 PPT。
 - `assets/template-profiles/matrix.json`：多模板测试矩阵。
+- `assets/template-profiles/stress-papers.json`：模板 smoke 测试使用的近年 UAV 论文压力内容。
+- `assets/template-profiles/template-smoke.local.example.json`：本地多模板 smoke 测试配置示例，不包含私有模板。
 - `assets/scaffolds/*.py`：可复用的生成脚本。
 
 ### 说明
@@ -171,6 +186,10 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 - New generated decks should run `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`; public examples have also been cleaned of empty text bodies.
 - Added template-aware audit profiles: `compact`, `dense-visual`, and `classic-large` map different templates to fixed font hierarchies instead of treating template differences as arbitrary font drift.
 - Added `run_template_matrix.py` for batch audit, render, and rendered-slide scan across multiple paper/template examples. New generated decks still fail hard on export or scan defects.
+- Added `run_template_smoke.py` for local PPTX template smoke tests covering slide size, master placeholders, wide figures, tall figures, tables, formula rows, long English terms, and blank-area scanning.
+- Added `repair_pptx_layout.py` for pre-publication cleanup of empty decorative text bodies, body font drift within a selected template profile, and explicit body newline fixes.
+- Expanded the public regression matrix to 8 paper/template combinations, adding recent FoV-CBF, PRIMER, and SPOT paper examples. Public examples pass PPTX audit; verified PDF baselines are available for PNG rendering and blank-area scan fallback.
+- This update also ran 4 local PPTAgent templates × 2 recent UAV papers through smoke generation. All 8 newly generated cases passed PPTX audit, LibreOffice export, PNG rendering, and rendered-slide scan.
 - Each generated deck should pass, in order: PPTX audit, LibreOffice export, PNG rendering, rendered-slide scan, and manual risk-slide inspection.
 
 `paper2ppt` contains a Codex Skill named `uav-paper-report` for generating and auditing academic paper-report PowerPoint decks. It is designed for Chinese group-meeting or thesis-style reports on UAVs, robotics, planning, SLAM, control, and autonomous systems. The goal is multi-template generation from a paper plus a user-provided PPT template or example style, rather than a single fixed layout. The workflow emphasizes style fidelity, content density, editable formulas, clean figure crops, layout checks, and rendered visual QA.
@@ -186,6 +205,10 @@ The public repository keeps only AI-generated example decks, screenshots, genera
 | RL method diagram | RL result table | CBF formula layout |
 | --- | --- | --- |
 | ![RL method diagram](skills/uav-paper-report/assets/screenshots/rl-method-diagram.jpg) | ![RL result table](skills/uav-paper-report/assets/screenshots/rl-result-table.jpg) | ![CBF formula layout](skills/uav-paper-report/assets/screenshots/cbf-formula-layout.jpg) |
+
+| FoV-CBF paper | PRIMER paper | SPOT paper |
+| --- | --- | --- |
+| ![FoV-CBF preview grid](skills/uav-paper-report/assets/screenshots/fov-cbf-preview-grid.png) | ![PRIMER preview grid](skills/uav-paper-report/assets/screenshots/primer-preview-grid.png) | ![SPOT preview grid](skills/uav-paper-report/assets/screenshots/spot-preview-grid.png) |
 
 ### Repository Contents
 
@@ -218,11 +241,13 @@ paper2ppt/
 
 ### Current Progress
 
-- Collected 5 public AI-generated example PPTX decks covering trajectory planning, RL navigation, multi-quadrotor CBF planning, multi-UAV coverage path planning, and a dark-cyan template adaptation.
+- Collected 8 public AI-generated example PPTX decks covering trajectory planning, RL navigation, multi-quadrotor CBF planning, multi-UAV coverage path planning, dark-cyan template adaptation, FoV-CBF, PRIMER, and SPOT examples.
 - Built reusable `python-pptx` scaffolds for covers, closing slides, bullet hierarchy, formula rows, native tables, process diagrams, figure crops, and metric rows.
 - Established a multi-template workflow: inspect the user template or example deck first, then generate a new paper report following its visual rhythm.
 - Added strict PPTX auditing for empty text bodies, manual body newlines, abnormal paragraph spacing, long formula rows in narrow boxes, content overlap, font hierarchy drift, and out-of-bounds shapes.
-- Added a multi-template regression matrix covering 5 paper/template combinations. The newest quality baselines run PPTX audit, LibreOffice export, PNG rendering, and rendered-slide blank-area scan.
+- Added a public multi-template regression matrix covering 8 paper/template combinations. The public examples pass PPTX audit, and verified PDF baselines can be used for PNG rendering and blank-area scan fallback.
+- Added local template smoke testing across 2 recent UAV papers and 4 PPTX templates, covering 4:3, 16:9, blue, red, purple, and master-placeholder-heavy templates.
+- Added `repair_pptx_layout.py` for pre-publication cleanup of empty text bodies, body font drift, and manual body newlines.
 - Added privacy sanitization for PPTX metadata, notes, comments, and visible personal information before public release.
 
 ### Roadmap
@@ -275,7 +300,8 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 7. Run text audit and rendered-slide scan scripts.
 8. Manually inspect formula slides, image-heavy slides, tables, and any edited in this pass pages.
 9. For multi-template testing, run `python .\skills\uav-paper-report\scripts\run_template_matrix.py --out-dir .\skills\uav-paper-report\out\template-matrix --keep-going`.
-10. Before committing to a public repository, sanitize and check all example/generated PPTX assets.
+10. For local template generalization testing, run `python .\skills\uav-paper-report\scripts\run_template_smoke.py --templates .\skills\uav-paper-report\assets\template-profiles\template-smoke.local.example.json --template-root <template-root> --keep-going`.
+11. Before committing to a public repository, sanitize and check all example/generated PPTX assets.
 
 ### Quality Rules
 
@@ -299,6 +325,8 @@ This skill focuses on the following issues:
 - `scripts/render_pptx_previews.py`: renders exported PDFs into slide PNGs and a preview grid.
 - `scripts/scan_rendered_slides.py`: scans for excessive blank space, crowding, and large internal whitespace bands.
 - `scripts/run_template_matrix.py`: runs the registered multi-paper, multi-template regression matrix from `assets/template-profiles/matrix.json`.
+- `scripts/run_template_smoke.py`: generates, exports, renders, and scans stress decks across local PPTX templates to validate template generalization.
+- `scripts/repair_pptx_layout.py`: batch-repairs empty text bodies, profile-based body font drift, and manual body newlines before publishing examples.
 - `scripts/check_dependencies.py`: checks basic runtime dependencies.
 
 Recommended pre-upload commands:
@@ -311,8 +339,10 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 ### Examples
 
 - `assets/examples/`: AI-generated and checked example decks.
-- `assets/examples/*.pptx`: validated example decks.
+- `assets/examples/*.pptx`: 8 validated example decks.
 - `assets/template-profiles/matrix.json`: multi-template test matrix.
+- `assets/template-profiles/stress-papers.json`: recent UAV paper stress content for local template smoke testing.
+- `assets/template-profiles/template-smoke.local.example.json`: local smoke-test template configuration example, with no private templates included.
 - `assets/scaffolds/*.py`: reusable generation scripts.
 
 ### Notes

@@ -18,6 +18,15 @@
         "tertiary": "16.0-20.2 pt"
       }
     },
+    "classic-blue-repaired": {
+      "audit_profile": "classic-large",
+      "description": "Large-font blue report style after generic PPTX repair for empty text bodies and font drift.",
+      "expected_body": {
+        "main": "19.2 pt",
+        "secondary": "18.4 pt",
+        "tertiary": "17.0 pt"
+      }
+    },
     "dense-visual-blue": {
       "audit_profile": "dense-visual",
       "description": "Dense visual/report style for figure-heavy method and experiment pages.",
@@ -72,6 +81,25 @@
       "paper": "Quadrotor learning/control display template adaptation",
       "template_profile": "dark-cyan",
       "pptx": "../examples/quad-lcd-dark-template-report.pptx"
+    },
+    {
+      "id": "fov-cbf-classic-blue",
+      "paper": "Robust quadrotor motion planning with field-of-view CBF certification",
+      "template_profile": "classic-blue-repaired",
+      "pptx": "../examples/uav-fov-cbf-regression-report.pptx"
+    },
+    {
+      "id": "primer-classic-blue",
+      "paper": "PRIMER perception-aware learning-based multiagent trajectory planner",
+      "template_profile": "classic-blue-repaired",
+      "pptx": "../examples/uav-primer-regression-report.pptx"
+    },
+    {
+      "id": "spot-classic-blue",
+      "paper": "SPOT spatio-temporal obstacle-free trajectory planning for UAVs",
+      "template_profile": "classic-blue-repaired",
+      "pptx": "../examples/uav-spot-regression-report.pptx",
+      "scan_blank_warn": 0.83
     }
   ]
 }

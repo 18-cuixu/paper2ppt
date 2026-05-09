@@ -1,3 +1,6 @@
 __pycache__/
 *.py[cod]
 skills/uav-paper-report/out/
+skills/uav-paper-report/assets/examples/uav-fov-cbf-report.pptx
+skills/uav-paper-report/assets/examples/uav-primer-report.pptx
+skills/uav-paper-report/assets/examples/uav-spot-report.pptx

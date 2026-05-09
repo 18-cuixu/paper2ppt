@@ -23,8 +23,9 @@ Use this sequence for every full deck or substantial revision:
 6. Generate editable PPTX with native PowerPoint content: text boxes, shapes, native diagrams, tables, editable formula text, and clean cropped paper figures.
 7. Export to PDF, render slide PNGs, inspect the preview grid and individual risk slides, then iterate until the QA gates pass. Run render and scan steps sequentially; do not scan while PNGs are still being written.
 8. If the deck, examples, or scaffolds will be published or uploaded, run `scripts/sanitize_pptx_privacy.py` on every PPTX asset and verify no personal metadata, notes, comments, or visible presenter names remain.
-9. For multi-template work, register the case in `assets/template-profiles/matrix.json` and run `scripts/run_template_matrix.py`. New generated decks are blocking failures if PPTX audit, export, render, or rendered-slide scan fails. Legacy reference PDFs may stay non-blocking only when explicitly marked as `legacy_pdf_baseline`.
-10. Sync final PPTX, PDF, preview grid, slide PNGs, and any reproducible build/crop scripts to the user's requested output directory.
+9. For multi-template work, register publishable examples in `assets/template-profiles/matrix.json` and run `scripts/run_template_matrix.py`. The current public matrix covers 8 paper/template combinations, including FoV-CBF, PRIMER, and SPOT. New generated decks are blocking failures if PPTX audit, export, render, or rendered-slide scan fails. Legacy reference PDFs may stay non-blocking only when explicitly marked as `legacy_pdf_baseline`, and `--baseline-dir` is only an explicit fallback when LibreOffice export is unavailable.
+10. For local template generalization work, run `scripts/run_template_smoke.py` with a local template config. The smoke test generates small stress decks from recent UAV paper content and checks 4:3/16:9 sizing, master placeholder cleanup, wide/tall image regions, tables, formula rows, English-heavy wrapping, and blank-area scanning. Do not publish private template PPTX files used by smoke tests.
+11. Sync final PPTX, PDF, preview grid, slide PNGs, and any reproducible build/crop scripts to the user's requested output directory.
 
 ## Deck Structure
 
@@ -121,6 +122,8 @@ For Python decks, start from `assets/scaffolds/build_ego_deck.py` and `assets/sc
 - `set_textbox`: bullet hierarchy with fixed hanging indents and no empty paragraphs.
 - `compact_text`: nonbreaking spaces and no-wrap terms to avoid meaningless line breaks.
 - `equation_block`: fixed row positions for formula blocks.
+- When adapting user templates, choose a true blank layout when available and remove visible master placeholders such as `单击此处...`, `Click to...`, dates, footers, and slide-number placeholders before adding generated content.
+- Never assume a fixed 13.33 x 7.5 canvas. Read `prs.slide_width` and `prs.slide_height`, then compute all regions from the current template size.
 - For editable formulas, prefer a `math_run` or equivalent helper that creates normal runs plus smaller superscript/subscript runs via DrawingML baseline. Avoid code-style formula text such as `p_{k+1}`, `L_clearance`, or braces showing in the rendered PNG.
 - `add_table`, `metric_row`, `visual_slide`, and split/table slide helpers.
 - `add_pic`: preserve aspect ratio within an explicit box. Choose the box from the image's real width/height; do not reuse one generic figure box for square, wide, and tall figures.
@@ -129,6 +132,7 @@ For Python decks, start from `assets/scaffolds/build_ego_deck.py` and `assets/sc
 - A slide lint pass before save: reject empty paragraphs, body-text `\n`, standalone bullet markers, oversized paragraph spacing, font sizes outside the section hierarchy, picture regions with poor aspect-ratio fit, and content slides whose planned occupied area is visibly under target.
 - The slide lint pass must also reject empty `p:txBody` nodes, mixed empty/text paragraphs, manual `a:br` line-break elements, long formula rows in narrow formula boxes, content-shape overlap, fixed-hierarchy font drift, and any shape whose bounds exceed the slide. Run `scripts/audit_pptx_text.py --strict-body-hierarchy --fail-on-warning` on the generated PPTX before rendering.
 - For template-specific audits, use the matching profile: `--profile compact` for compact blue decks, `--profile dense-visual` for figure/formula-heavy or dark-cyan decks, and `--profile classic-large` for older large-font blue decks. Do not mark a new deck as legacy to bypass rendered scan warnings.
+- Before publishing generated examples, run `scripts/repair_pptx_layout.py` only as a mechanical cleanup pass for empty decorative text bodies, profile-based font drift, and explicit newline replacement. It does not replace source layout fixes, rendered scan fixes, or manual slide inspection.
 - A privacy lint pass before upload or publication: use `scripts/sanitize_pptx_privacy.py --in-place` for example/generated PPTX files, then run it again with `--check-only --fail-on-warning`. Do not publish PPTX files containing author names, editor names, comments, notes slides, custom properties, or visible personal presenter text.
 
 For visual slides:
@@ -159,7 +163,8 @@ Before final response:
 8. Fix all blocking issues: overlap, text/image collision, bad image crops, wrong image proportions, meaningless blank lines, excessive blank area, inconsistent cover/ending color, wrong font scale, formula crowding, malformed table proportions, and AI-sounding wording.
 9. For repository uploads or shared skill packages, run `scripts/sanitize_pptx_privacy.py` over `assets/examples`, then run `--check-only --fail-on-warning`.
 10. After any final edit, inspect at least the cover, thanks slide, all formula slides, all image-heavy slides, and any slide that previously had excessive blank area. Passing automated scripts alone is not enough.
-11. For multi-template regression, run `python scripts/run_template_matrix.py --out-dir out/template-matrix --keep-going`. Treat any non-legacy scan/export/audit failure as a blocking defect.
+11. For public multi-template regression, run `python scripts/run_template_matrix.py --out-dir out/template-matrix --keep-going`. Treat any non-legacy scan/export/audit failure as a blocking defect.
+12. For local template smoke testing, run `python scripts/run_template_smoke.py --templates assets/template-profiles/template-smoke.local.example.json --template-root <template-root> --keep-going`. Treat any audit/export/render/scan failure as a layout-generalization defect.
 
 The preview grid is not enough for final QA. Open individual slide PNGs when a slide contains formulas, dense tables, multiple figures, any small text, a three-column layout, a metric row, or a slide changed in this pass for blank-area/overlap issues.
 
@@ -171,10 +176,15 @@ The preview grid is not enough for final QA. Open individual slide PNGs when a s
 - `assets/examples/uav-rl-privileged-report.pptx`: accepted RL privileged-information quadrotor report deck with editable run-based formulas, native network diagram, and validated density.
 - `assets/examples/uav-multi-quad-cbf-report.pptx`: accepted multi-quadrotor cooperative-manipulation CBF report deck with formula/table-heavy method slides, native tables, paper figure crops, and validated blank-area scan.
 - `assets/examples/quad-lcd-dark-template-report.pptx`: dark-cyan template adaptation example that must pass PPTX audit, LibreOffice export, PNG render, and rendered-slide scan.
-- `assets/template-profiles/matrix.json`: multi-template regression matrix covering blue large, dense visual, compact formula/table, and dark-cyan styles.
+- `assets/examples/uav-fov-cbf-regression-report.pptx`: FoV-CBF certification report deck used as a recent-paper classic-blue regression case.
+- `assets/examples/uav-primer-regression-report.pptx`: PRIMER perception-aware multiagent planning report deck used as a recent-paper classic-blue regression case.
+- `assets/examples/uav-spot-regression-report.pptx`: SPOT spatio-temporal obstacle-free planning report deck used as a recent-paper classic-blue regression case.
+- `assets/template-profiles/matrix.json`: 8-case multi-template regression matrix covering blue large, dense visual, compact formula/table, dark-cyan, and repaired classic-blue styles.
 - `assets/scaffolds/*.py`: build scripts from accepted decks. Use as patterns, not as fixed content.
 - `references/dependencies.md`: packages and environment checks.
 - `references/style-guide.md`: detailed layout and typography rules.
 - `references/qa-checklist.md`: final review checklist.
 - `scripts/sanitize_pptx_privacy.py`: remove PPTX personal metadata, notes, comments, custom properties, and visible presenter names before publishing.
 - `scripts/run_template_matrix.py`: run template-aware audit, render, and scan across the registered examples.
+- `scripts/run_template_smoke.py`: generate and QA local stress decks across multiple PPTX templates without publishing those private templates.
+- `scripts/repair_pptx_layout.py`: mechanically clean generated PPTX examples before publication; use after source layout fixes, not instead of them.

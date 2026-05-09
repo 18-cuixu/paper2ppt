@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import argparse
+import io
+import math
 import re
 import sys
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from PIL import Image
+
 
 NS = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
 }
 
 DEFAULT_SLIDE_W = 12191695
@@ -33,6 +39,9 @@ SUSPICIOUS = [
     "代价是",
     "下一步应该",
     "如果继续",
+    "后续工作",
+    "适合借鉴",
+    "借鉴到",
     "最值得借鉴",
     "一句话概括",
     "更像是",
@@ -59,6 +68,7 @@ INTENTIONAL_BREAK_SHAPE_NAMES = ("DIAG_",)
 
 PROFILE_PRESETS = {
     "compact": {
+        "body_min": 16.0,
         "main_min": 17.6,
         "main_max": 18.8,
         "secondary_min": 16.4,
@@ -70,6 +80,7 @@ PROFILE_PRESETS = {
         "max_formula_width_factor": 1.05,
     },
     "dense-visual": {
+        "body_min": 15.8,
         "main_min": 17.6,
         "main_max": 19.1,
         "secondary_min": 15.8,
@@ -81,6 +92,7 @@ PROFILE_PRESETS = {
         "max_formula_width_factor": 1.15,
     },
     "classic-large": {
+        "body_min": 16.0,
         "main_min": 18.0,
         "main_max": 21.2,
         "secondary_min": 16.8,
@@ -210,8 +222,84 @@ def iter_shape_bounds(pptx: Path):
                 yield slide_no, shape_name, left, top, w, h, width, height
 
 
+def resolve_relationship_target(source: str, target: str) -> str:
+    base = Path(source).parent
+    parts: list[str] = []
+    for part in (base / target).as_posix().split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    return "/".join(parts)
+
+
+def slide_relationships(zf: zipfile.ZipFile, slide_xml: str) -> dict[str, str]:
+    rels_path = f"{Path(slide_xml).parent}/_rels/{Path(slide_xml).name}.rels"
+    try:
+        root = ET.fromstring(zf.read(rels_path))
+    except KeyError:
+        return {}
+    rels: dict[str, str] = {}
+    for rel in root.findall("./rel:Relationship", NS):
+        rid = rel.get("Id")
+        target = rel.get("Target")
+        if rid and target:
+            rels[rid] = resolve_relationship_target(slide_xml, target)
+    return rels
+
+
+def has_source_crop(pic) -> bool:
+    src = pic.find(".//a:blipFill/a:srcRect", NS)
+    if src is None:
+        return False
+    return any(src.get(key) not in (None, "0") for key in ("l", "r", "t", "b"))
+
+
+def iter_picture_aspects(pptx: Path):
+    with zipfile.ZipFile(pptx) as zf:
+        slide_xmls = slide_names(zf)
+        last_slide = len(slide_xmls)
+        for name in slide_xmls:
+            slide_no = int(re.search(r"slide(\d+)\.xml", name).group(1))
+            root = ET.fromstring(zf.read(name))
+            rels = slide_relationships(zf, name)
+            for pic in root.findall(".//p:pic", NS):
+                name_node = pic.find(".//p:cNvPr", NS)
+                shape_name = name_node.get("name", "") if name_node is not None else ""
+                xfrm = pic.find(".//a:xfrm", NS)
+                if xfrm is None:
+                    continue
+                off = xfrm.find("./a:off", NS)
+                ext = xfrm.find("./a:ext", NS)
+                if off is None or ext is None:
+                    continue
+                top = int(off.get("y", "0")) / EMU_PER_INCH
+                width = int(ext.get("cx", "0")) / EMU_PER_INCH
+                height = int(ext.get("cy", "0")) / EMU_PER_INCH
+                if slide_no in (1, last_slide) or top < 1.0 or width <= 0 or height <= 0:
+                    continue
+                if has_source_crop(pic):
+                    continue
+                blip = pic.find(".//a:blip", NS)
+                rid = blip.get(f"{{{NS['r']}}}embed") if blip is not None else None
+                target = rels.get(rid or "")
+                if not target or target not in zf.namelist():
+                    continue
+                try:
+                    with Image.open(io.BytesIO(zf.read(target))) as image:
+                        image_ratio = image.width / image.height
+                except Exception:
+                    continue
+                shape_ratio = width / height
+                yield slide_no, shape_name, shape_ratio, image_ratio
+
+
 def iter_content_bounds(pptx: Path):
     with zipfile.ZipFile(pptx) as zf:
+        slide_w, slide_h = slide_size(zf)
         for name in slide_names(zf):
             slide_no = int(re.search(r"slide(\d+)\.xml", name).group(1))
             root = ET.fromstring(zf.read(name))
@@ -234,7 +322,7 @@ def iter_content_bounds(pptx: Path):
                 top = int(off.get("y", "0")) / EMU_PER_INCH
                 right = left + int(ext.get("cx", "0")) / EMU_PER_INCH
                 bottom = top + int(ext.get("cy", "0")) / EMU_PER_INCH
-                yield slide_no, shape_name, left, top, right, bottom
+                yield slide_no, shape_name, left, top, right, bottom, slide_w / EMU_PER_INCH, slide_h / EMU_PER_INCH
 
 
 def run_sizes(paragraph) -> list[float]:
@@ -296,9 +384,9 @@ def overlap_area(a: tuple[float, float, float, float], b: tuple[float, float, fl
     return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
 
 
-def should_check_overlap(name: str, box: tuple[float, float, float, float]) -> bool:
+def should_check_overlap(name: str, box: tuple[float, float, float, float], slide_h: float) -> bool:
     left, top, right, bottom = box
-    if top < 1.0 or bottom > 7.08:
+    if top < 1.0 or bottom > slide_h - 0.42:
         return False
     if right - left < 0.05 or bottom - top < 0.05:
         return False
@@ -336,6 +424,12 @@ def main() -> int:
     parser.add_argument("--max-body-space-after", type=float, default=3.0)
     parser.add_argument("--max-body-space-before", type=float, default=0.5)
     parser.add_argument("--max-formula-width-factor", type=float, default=1.05)
+    parser.add_argument(
+        "--max-picture-ratio-drift",
+        type=float,
+        default=0.08,
+        help="Warn when an uncropped content picture's displayed aspect ratio differs from its source image.",
+    )
     args = parser.parse_args()
 
     if args.profile:
@@ -454,9 +548,9 @@ def main() -> int:
 
         if args.strict_body_hierarchy:
             slide_items: dict[int, list[tuple[str, tuple[float, float, float, float]]]] = {}
-            for slide_no, shape_name, left, top, right, bottom in iter_content_bounds(pptx):
+            for slide_no, shape_name, left, top, right, bottom, slide_w, slide_h in iter_content_bounds(pptx):
                 box = (left, top, right, bottom)
-                if should_check_overlap(shape_name, box):
+                if should_check_overlap(shape_name, box, slide_h):
                     slide_items.setdefault(slide_no, []).append((shape_name, box))
             for slide_no, items in slide_items.items():
                 for i in range(len(items)):
@@ -485,6 +579,14 @@ def main() -> int:
                     warnings.append(
                         f"{prefix}: {level} bullet font hierarchy drift is too large "
                         f"({range_text(values)}, spread {spread:.1f} pt)"
+                    )
+
+            for slide_no, shape_name, shape_ratio, image_ratio in iter_picture_aspects(pptx):
+                drift = abs(math.log(shape_ratio / image_ratio))
+                if drift > args.max_picture_ratio_drift:
+                    warnings.append(
+                        f"{prefix} slide {slide_no:02d}: picture `{shape_name}` aspect ratio drift "
+                        f"({shape_ratio:.2f} displayed vs {image_ratio:.2f} source)"
                     )
 
     if warnings:

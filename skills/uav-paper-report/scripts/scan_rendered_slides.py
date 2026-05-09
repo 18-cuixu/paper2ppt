@@ -74,6 +74,36 @@ def large_internal_whitespace(img: Image.Image, threshold: int = 248, min_band_f
     return warnings
 
 
+def large_empty_quadrants(img: Image.Image, threshold: int = 248) -> list[str]:
+    gray = img.convert("L")
+    width, height = gray.size
+    top = int(height * 0.20)
+    bottom = int(height * 0.88)
+    left = int(width * 0.06)
+    right = int(width * 0.94)
+    if bottom <= top or right <= left:
+        return []
+
+    mid_x = (left + right) // 2
+    mid_y = (top + bottom) // 2
+    regions = [
+        ("upper-left", (left, top, mid_x, mid_y)),
+        ("upper-right", (mid_x, top, right, mid_y)),
+        ("lower-left", (left, mid_y, mid_x, bottom)),
+        ("lower-right", (mid_x, mid_y, right, bottom)),
+    ]
+    warnings: list[str] = []
+    for label, box in regions:
+        crop = gray.crop(box)
+        if crop.width < width * 0.30 or crop.height < height * 0.24:
+            continue
+        hist = crop.histogram()
+        blank = sum(hist[threshold:]) / (crop.width * crop.height)
+        if blank > 0.985:
+            warnings.append(f"large empty {label} body region")
+    return warnings
+
+
 def dense_text_bands(img: Image.Image, threshold: int = 248) -> list[str]:
     gray = img.convert("L")
     width, height = gray.size
@@ -136,6 +166,8 @@ def scan(path: Path, blank_warn: float, edge_warn: float, dense_band: bool, min_
         if margin_warnings:
             warnings.append(f"{path.name}: {', '.join(margin_warnings)}")
     for warning in large_internal_whitespace(img, min_band_fraction=min_band_fraction):
+        warnings.append(f"{path.name}: {warning}")
+    for warning in large_empty_quadrants(img):
         warnings.append(f"{path.name}: {warning}")
     if dense_band:
         for warning in dense_text_bands(img):

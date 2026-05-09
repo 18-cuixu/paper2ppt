@@ -51,6 +51,7 @@ Do not make the first sentence of a slide a loose unbulleted sentence.
 - Rules, metric rows, figure boxes, and bottom interpretation bands should have visible rendered gaps from text. A line that visually touches a rule or crosses into the next region is a layout failure even if the shape-overlap checker passes.
 - If a slide is repaired for blank area, rerender that slide and inspect it full-size; the repair often creates new wrapping or rule-collision defects.
 - If a content slide has a large empty band, change the layout family. Typical fixes are a left-right evidence layout, a larger natural-ratio figure, a native metric/table band, or splitting dense method content across two slides. Do not add an unformatted sentence just to occupy space.
+- If one body quadrant is empty while another quadrant is dense, rebalance the slide with a small native table, a term explanation band, a larger natural-ratio visual, or a split slide. Do not leave a lower-right or lower-left region blank just because the top text fits.
 - Body text needs a wrapping budget. Keep English-heavy bullets shorter, use nonbreaking spaces for units and method names, and reserve extra text-box height so LibreOffice export does not create orphan words or apparent blank lines.
 - If two paragraphs look separated by a blank line after rendering, reduce `space_after`, increase the text-box height, or split the content into two visually separated regions with a rule/label. Raw blank gaps inside a continuous bullet block are not acceptable.
 - Wide empty areas are layout failures, not copywriting problems. Prefer a larger crop, a native diagram, a compact table, or a left-right evidence layout over adding a loose filler sentence.
@@ -106,7 +107,7 @@ Do not make the first sentence of a slide a loose unbulleted sentence.
 
 - Tables should be native PPT tables or editable shape/table systems.
 - Header row light gray, body white, compact margins.
-- Red only for winning method/name/value or decisive metric.
+- Red only for the winning method/name/value, decisive metric, or one key term inside a paragraph. Do not turn an entire paragraph red because it contains a key term.
 - Use metric rows for 2-3 key numbers, not for decorative filler.
 
 ## Wording

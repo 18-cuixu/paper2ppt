@@ -13,10 +13,11 @@
 - 新生成的报告建议使用 `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`，公开示例也已清理空文本体。
 - 新增多模板 profile 与回归矩阵：`compact`、`dense-visual`、`classic-large` 分别对应不同模板的固定字号层级，避免把模板差异误判成随意改字号。
 - 新增 `run_template_matrix.py`，可批量审计、渲染和扫描多个论文示例与模板风格；新生成结果的导出和渲染扫描仍是硬门槛。
-- 新增 `run_template_smoke.py`，用合成压力页在多套本地 PPTX 模板上测试页面尺寸、母版占位符、宽图、窄图、表格、公式、长英文术语和空白区域。
+- 新增 `run_template_smoke.py`，用合成压力页在多套本地 PPTX 模板上测试页面尺寸、母版占位符、宽图、窄图、表格、公式、长英文术语、局部大空白和重点强调。
 - 新增 `repair_pptx_layout.py`，用于发布前批量移除装饰 shape 的空文本体、统一模板 profile 下的正文字号，并可显式修复正文手动换行。
 - 公开回归矩阵已扩展到 8 个论文/模板组合，新增 FoV-CBF、PRIMER 和 SPOT 三个最近论文案例；公开示例均通过 PPTX 审计，已验证 PDF baseline 可用于 PNG 渲染和空白扫描 fallback。
-- 本轮额外完成 4 套本地 PPTAgent 模板 × 2 篇近年 UAV 论文的 smoke 测试，8 个新生成用例均通过 PPTX 审计、LibreOffice 导出、PNG 渲染和渲染页扫描。
+- 本轮额外完成 6 套本地 PPTAgent 模板 × 5 篇近年 UAV 论文的 smoke 测试，30 个新生成用例均通过 PPTX 审计、LibreOffice 导出、PNG 渲染和渲染页扫描。
+- 渲染扫描新增局部空白块检测，可发现右下角/左下角等单个正文象限大面积空白的问题；smoke 生成器也改为只对关键词局部标红，并在正文页先铺统一白底遮盖母版示例文字，不再整段变红或露出模板里的 author/title/date。
 - 生成后必须按顺序完成：PPTX 审计、LibreOffice 导出、PNG 渲染、渲染页扫描和风险页人工检查。
 
 `paper2ppt` 收录了一个用于论文汇报 PPT 生成与审查的 Codex Skill：`uav-paper-report`。它面向无人机、机器人、规划、SLAM、控制和自主系统方向的中文组会/论文汇报，目标是支持“给定论文 + 给定 PPT 模板/示例风格”的多模板生成，而不是固定在单一版式上。当前重点是让生成结果保持风格一致、内容密度足够、公式和图表可讲、图片裁剪干净，并通过渲染后的视觉 QA 反复检查。
@@ -73,7 +74,7 @@ paper2ppt/
 - 已支持多模板风格迁移的工作流：先读取用户模板或示例 deck，再按其版式节奏生成新论文汇报。
 - 已加入严格 PPTX 审计：空文本体、正文手动换行、异常段落间距、窄公式长行、内容重叠、字体层级漂移和越界 shape。
 - 已加入多模板回归矩阵，当前覆盖 8 个公开论文/模板组合；公开示例通过 PPTX 审计，渲染扫描可使用已验证 PDF baseline 复核。
-- 已加入模板 smoke 测试，当前用 2 篇近年 UAV 论文压力内容测试 4 套本地 PPTX 模板，覆盖 4:3、16:9、蓝色、红色、紫色和带母版占位符的模板。
+- 已加入模板 smoke 测试，当前用 5 篇近年 UAV 论文压力内容测试 6 套本地 PPTX 模板，覆盖 4:3、16:9、蓝色、红色、紫色、绿色、青色和带母版占位符的模板。
 - 已加入通用修复脚本 `repair_pptx_layout.py`，用于发布前统一清理空文本体、正文字号漂移和正文手动换行。
 - 已加入隐私清理：发布前清理 PPTX 元数据、备注、批注和可见个人信息。
 
@@ -137,7 +138,7 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 - 正文字体统一使用 Times New Roman。
 - 普通正文需要项目符号和正确缩进，不保留无意义空行。
 - 字号层级按模板 profile 固定，不能逐页临时调字号；审计可用 `--profile compact`、`--profile dense-visual` 或 `--profile classic-large`。
-- 关键术语和关键数字可以加粗/标红，但不能大面积红字。
+- 关键术语和关键数字可以加粗/标红，但只能局部强调关键词或数值，不能把整段文字变成红字。
 - 公式应尽量用 PPT 原生文本/shape 方式表达，并保持字号统一。
 - 图片必须保持比例，不能和文字重叠，也不能裁掉关键内容。
 - 每页不应留下明显超过 20% 的无意义空白。
@@ -149,7 +150,7 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 - `scripts/audit_pptx_text.py`：检查 AI 化表述、空文本体、混合空段、手动换行、异常段落间距、公式行宽度、内容重叠、字号异常、严格字号层级和越界 shape。
 - `scripts/sanitize_pptx_privacy.py`：清理 PPTX 个人信息、备注、批注、自定义属性和可见汇报人姓名。
 - `scripts/render_pptx_previews.py`：把导出的 PDF 渲染为逐页 PNG 和 preview grid。
-- `scripts/scan_rendered_slides.py`：扫描空白过多、拥挤和异常空白带。
+- `scripts/scan_rendered_slides.py`：扫描空白过多、拥挤、异常空白带和单个正文象限大空白。
 - `scripts/run_template_matrix.py`：按 `assets/template-profiles/matrix.json` 批量测试多论文、多模板示例。
 - `scripts/run_template_smoke.py`：用压力论文内容在多套本地 PPTX 模板上批量生成、导出、渲染和扫描，用于验证模板泛化性。
 - `scripts/repair_pptx_layout.py`：发布前批量修复空文本体、模板 profile 下的正文字号漂移和正文手动换行。
@@ -186,10 +187,11 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 - New generated decks should run `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`; public examples have also been cleaned of empty text bodies.
 - Added template-aware audit profiles: `compact`, `dense-visual`, and `classic-large` map different templates to fixed font hierarchies instead of treating template differences as arbitrary font drift.
 - Added `run_template_matrix.py` for batch audit, render, and rendered-slide scan across multiple paper/template examples. New generated decks still fail hard on export or scan defects.
-- Added `run_template_smoke.py` for local PPTX template smoke tests covering slide size, master placeholders, wide figures, tall figures, tables, formula rows, long English terms, and blank-area scanning.
+- Added `run_template_smoke.py` for local PPTX template smoke tests covering slide size, master placeholders, wide figures, tall figures, tables, formula rows, long English terms, local blank quadrants, and restrained emphasis.
 - Added `repair_pptx_layout.py` for pre-publication cleanup of empty decorative text bodies, body font drift within a selected template profile, and explicit body newline fixes.
 - Expanded the public regression matrix to 8 paper/template combinations, adding recent FoV-CBF, PRIMER, and SPOT paper examples. Public examples pass PPTX audit; verified PDF baselines are available for PNG rendering and blank-area scan fallback.
-- This update also ran 4 local PPTAgent templates × 2 recent UAV papers through smoke generation. All 8 newly generated cases passed PPTX audit, LibreOffice export, PNG rendering, and rendered-slide scan.
+- This update also ran 6 local PPTAgent templates × 5 recent UAV papers through smoke generation. All 30 newly generated cases passed PPTX audit, LibreOffice export, PNG rendering, and rendered-slide scan.
+- Rendered-slide scanning now detects large empty body quadrants, and the smoke generator applies red emphasis only to specific keywords while covering master-sample text such as author/title/date on generated body slides.
 - Each generated deck should pass, in order: PPTX audit, LibreOffice export, PNG rendering, rendered-slide scan, and manual risk-slide inspection.
 
 `paper2ppt` contains a Codex Skill named `uav-paper-report` for generating and auditing academic paper-report PowerPoint decks. It is designed for Chinese group-meeting or thesis-style reports on UAVs, robotics, planning, SLAM, control, and autonomous systems. The goal is multi-template generation from a paper plus a user-provided PPT template or example style, rather than a single fixed layout. The workflow emphasizes style fidelity, content density, editable formulas, clean figure crops, layout checks, and rendered visual QA.
@@ -246,7 +248,7 @@ paper2ppt/
 - Established a multi-template workflow: inspect the user template or example deck first, then generate a new paper report following its visual rhythm.
 - Added strict PPTX auditing for empty text bodies, manual body newlines, abnormal paragraph spacing, long formula rows in narrow boxes, content overlap, font hierarchy drift, and out-of-bounds shapes.
 - Added a public multi-template regression matrix covering 8 paper/template combinations. The public examples pass PPTX audit, and verified PDF baselines can be used for PNG rendering and blank-area scan fallback.
-- Added local template smoke testing across 2 recent UAV papers and 4 PPTX templates, covering 4:3, 16:9, blue, red, purple, and master-placeholder-heavy templates.
+- Added local template smoke testing across 5 recent UAV papers and 6 PPTX templates, covering 4:3, 16:9, blue, red, purple, green, cyan, and master-placeholder-heavy templates.
 - Added `repair_pptx_layout.py` for pre-publication cleanup of empty text bodies, body font drift, and manual body newlines.
 - Added privacy sanitization for PPTX metadata, notes, comments, and visible personal information before public release.
 
@@ -311,7 +313,7 @@ This skill focuses on the following issues:
 - Body paragraphs need bullets and proper indentation; meaningless blank lines, empty text bodies, and manual body newlines should not remain.
 - Body font sizes should use a fixed hierarchy across the deck instead of changing slide by slide to force content to fit.
 - Font hierarchy is template-profile based. Use `--profile compact`, `--profile dense-visual`, or `--profile classic-large` for audit instead of manually loosening thresholds.
-- Key terms and numbers may be bold/red, but most text should stay black.
+- Key terms and numbers may be bold/red, but emphasis should stay on the exact word or number; full explanatory paragraphs should remain black.
 - Formulas should preferably be editable PowerPoint-native text/shapes with consistent sizing.
 - Images must preserve aspect ratio, avoid text overlap, and keep important content visible.
 - Normal content slides should not leave more than about 20% meaningless blank area.
@@ -323,7 +325,7 @@ This skill focuses on the following issues:
 - `scripts/audit_pptx_text.py`: checks AI-sounding wording, empty text bodies, mixed empty paragraphs, manual line breaks, abnormal paragraph spacing, formula row width, content overlap, font-size anomalies, strict body hierarchy, and out-of-bounds shapes.
 - `scripts/sanitize_pptx_privacy.py`: removes PPTX personal information, notes, comments, custom properties, and visible presenter names.
 - `scripts/render_pptx_previews.py`: renders exported PDFs into slide PNGs and a preview grid.
-- `scripts/scan_rendered_slides.py`: scans for excessive blank space, crowding, and large internal whitespace bands.
+- `scripts/scan_rendered_slides.py`: scans for excessive blank space, crowding, large internal whitespace bands, and empty body quadrants.
 - `scripts/run_template_matrix.py`: runs the registered multi-paper, multi-template regression matrix from `assets/template-profiles/matrix.json`.
 - `scripts/run_template_smoke.py`: generates, exports, renders, and scans stress decks across local PPTX templates to validate template generalization.
 - `scripts/repair_pptx_layout.py`: batch-repairs empty text bodies, profile-based body font drift, and manual body newlines before publishing examples.

@@ -13,6 +13,18 @@
       "theme": "blue"
     },
     {
+      "id": "pptagent-cip",
+      "path": "${PPTAGENT_TEMPLATE_ROOT}/cip/source.pptx",
+      "audit_profile": "compact",
+      "theme": "green"
+    },
+    {
+      "id": "pptagent-default",
+      "path": "${PPTAGENT_TEMPLATE_ROOT}/default/source.pptx",
+      "audit_profile": "compact",
+      "theme": "cyan"
+    },
+    {
       "id": "pptagent-thu",
       "path": "${PPTAGENT_TEMPLATE_ROOT}/thu/source.pptx",
       "audit_profile": "dense-visual",

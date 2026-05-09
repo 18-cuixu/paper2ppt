@@ -180,8 +180,8 @@ def main() -> int:
             return 2
 
     office = None if args.skip_render else soffice_path()
-    if not args.skip_render and not office:
-        print("LibreOffice not found; rerun with --skip-render or install LibreOffice.", file=sys.stderr)
+    if not args.skip_render and not office and args.baseline_dir is None:
+        print("LibreOffice not found; rerun with --skip-render, provide --baseline-dir, or install LibreOffice.", file=sys.stderr)
         return 2
 
     failures: list[str] = []
@@ -239,15 +239,25 @@ def main() -> int:
         if case.get("legacy_pdf_baseline") and legacy_pdf and legacy_pdf.exists():
             print(f"using legacy rendered PDF baseline: {legacy_pdf}", flush=True)
             pdf = legacy_pdf
-        elif baseline_pdf:
-            print(f"using explicit rendered PDF baseline: {baseline_pdf}", flush=True)
-            pdf = baseline_pdf
         else:
-            try:
-                pdf = export_pdf(pptx, case_dir, office or "soffice", timeout=args.export_timeout)
-            except RuntimeError as exc:
-                print(exc)
-                failures.append(f"{case_id}: LibreOffice export failed")
+            if office:
+                try:
+                    pdf = export_pdf(pptx, case_dir, office, timeout=args.export_timeout)
+                except RuntimeError as exc:
+                    print(exc)
+                    if baseline_pdf:
+                        print(f"falling back to explicit rendered PDF baseline: {baseline_pdf}", flush=True)
+                        pdf = baseline_pdf
+                    else:
+                        failures.append(f"{case_id}: LibreOffice export failed")
+                        if not args.keep_going:
+                            break
+                        continue
+            elif baseline_pdf:
+                print(f"LibreOffice not found; using explicit rendered PDF baseline: {baseline_pdf}", flush=True)
+                pdf = baseline_pdf
+            else:
+                failures.append(f"{case_id}: LibreOffice unavailable and no rendered PDF baseline")
                 if not args.keep_going:
                     break
                 continue

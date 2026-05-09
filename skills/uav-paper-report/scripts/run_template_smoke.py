@@ -152,6 +152,45 @@ def add_plain(slide, text: str, left: float, top: float, width: float, height: f
 
 def add_bullets(slide, lines: list[str], left: float, top: float, width: float, height: float, sizes: dict[str, float], *,
                 name: str, space_after: float = 1.2) -> None:
+    emphasis_terms = (
+        "安全",
+        "时间最优",
+        "运行时",
+        "CBF",
+        "LQR",
+        "执行器",
+        "多模态",
+        "最小间距",
+        "覆盖率",
+        "平滑",
+        "低",
+        "deterministic",
+    )
+
+    def add_emphasis_runs(paragraph, text: str, size: float, *, base_bold: bool) -> None:
+        cursor = 0
+        while cursor < len(text):
+            hit = None
+            hit_pos = len(text)
+            for term in emphasis_terms:
+                pos = text.find(term, cursor)
+                if pos != -1 and pos < hit_pos:
+                    hit = term
+                    hit_pos = pos
+            if hit is None:
+                run = paragraph.add_run()
+                run.text = text[cursor:]
+                set_run(run, size, bold=base_bold, color=BLACK)
+                break
+            if hit_pos > cursor:
+                run = paragraph.add_run()
+                run.text = text[cursor:hit_pos]
+                set_run(run, size, bold=base_bold, color=BLACK)
+            run = paragraph.add_run()
+            run.text = hit
+            set_run(run, size, bold=True, color=RED)
+            cursor = hit_pos + len(hit)
+
     shape = add_textbox(slide, left, top, width, height, name=name)
     tf = shape.text_frame
     tf.clear()
@@ -177,15 +216,8 @@ def add_bullets(slide, lines: list[str], left: float, top: float, width: float, 
         p.line_spacing = 0.93
         p.left_margin = indent
         p.first_line_indent = first
-        run = p.add_run()
-        run.text = line
-        bold = marker == "●" and len(line) < 46
-        set_run(run, size, bold=bold, color=BLACK)
-        for key in ("安全", "时间最优", "运行时", "CBF", "LQR", "deterministic"):
-            if key in line:
-                run.font.bold = True
-                run.font.color.rgb = RED if key in ("安全", "运行时", "CBF") else BLACK
-                break
+        bold = marker == "●" and len(line) < 34
+        add_emphasis_runs(p, line, size, base_bold=bold)
 
 
 def strip_empty_text_bodies(prs: Presentation) -> int:
@@ -219,6 +251,9 @@ def add_rule(slide, left: float, top: float, width: float, accent: RGBColor) -> 
 
 
 def add_header(slide, w: float, h: float, accent: RGBColor, part: str, title: str) -> None:
+    # Some public templates keep sample lab names, footers, or date fields on the
+    # master. Cover the master canvas before adding our own report layout.
+    add_rect(slide, 0.0, 0.0, w, h, WHITE)
     add_rect(slide, 0.0, 0.0, w, 0.48, LIGHT_GRAY)
     add_rect(slide, 0.0, 0.48, w, 0.04, accent)
     add_plain(slide, part, 0.46, 0.12, 1.30, 0.24, 11.0, name="HEADER_PART", bold=True, color=accent)
@@ -288,7 +323,7 @@ def draw_assets(out_dir: Path, accent: RGBColor) -> dict[str, Path]:
         d.text((x0 + 18, y0 + 30), text, fill=(34, 40, 48))
     for start, end in [((230, 122), (300, 122)), ((465, 122), (535, 122)), ((617, 165), (502, 300)), ((382, 122), (267, 300)), ((350, 342), (420, 342))]:
         d.line((*start, *end), fill=accent_rgb, width=4)
-    d.text((60, 25), "editable method pipeline used as figure-layout stress", fill=(45, 50, 60))
+    d.text((60, 25), "method pipeline and closed-loop execution", fill=(45, 50, 60))
     path = out_dir / "square-pipeline.png"
     square.save(path)
     paths["square"] = path
@@ -330,7 +365,7 @@ def add_table(slide, rows: list[list[str]], left: float, top: float, width: floa
             p.alignment = PP_ALIGN.CENTER
             p.space_after = Pt(0)
             for run in p.runs:
-                value_is_key = value in {"低", "运行时输入滤波", "时间最优候选", "基准测试与实机实验"}
+                value_is_key = value in {"低", "运行时输入滤波", "时间最优候选", "实机实验"}
                 set_run(run, size, bold=ri == 0 or ci == 0 or value_is_key, color=RED if value_is_key else BLACK)
 
 
@@ -385,8 +420,8 @@ def cover_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, temp
     add_rect(slide, 0, band_y, w, band_h, accent)
     title_color = WHITE if brightness(accent) < 0.72 else BLACK
     add_plain(slide, paper["title"], w * 0.08, band_y + band_h * 0.24, w * 0.84, band_h * 0.34, min(28, sizes["main"] + 8.8), name="COVER_TITLE", bold=True, color=title_color, align=PP_ALIGN.CENTER)
-    add_plain(slide, f"{paper['topic']} / {paper['year']} / template smoke: {template_id}", w * 0.10, band_y + band_h * 0.62, w * 0.80, 0.34, sizes["secondary"], name="COVER_SUBTITLE", bold=True, color=title_color, align=PP_ALIGN.CENTER)
-    add_plain(slide, "paper2ppt multi-template regression", w * 0.32, h - 0.72, w * 0.36, 0.28, 13.0, name="COVER_FOOTER", color=accent, align=PP_ALIGN.CENTER)
+    add_plain(slide, f"{paper['topic']} / {paper['year']}", w * 0.10, band_y + band_h * 0.62, w * 0.80, 0.34, sizes["secondary"], name="COVER_SUBTITLE", bold=True, color=title_color, align=PP_ALIGN.CENTER)
+    add_plain(slide, "中文学术论文汇报", w * 0.32, h - 0.72, w * 0.36, 0.28, 13.0, name="COVER_FOOTER", color=accent, align=PP_ALIGN.CENTER)
 
 
 def content_position(prs: Presentation, paper: dict[str, Any], accent: RGBColor, sizes: dict[str, float]) -> None:
@@ -399,32 +434,14 @@ def content_position(prs: Presentation, paper: dict[str, Any], accent: RGBColor,
     if w < 11.0:
         add_bullets(slide, ["● " + paper["problem"], "● " + paper["main_claim"]] + paper["bullets"][:3], 0.55, body_top, w - 1.1, 3.06, sizes, name="BODY_POSITION", space_after=1.0)
         add_rule(slide, 0.60, 4.64, w - 1.20, accent)
-        add_table(
-            slide,
-            [["检查项", "目标"], ["字号", "固定层级"], ["换行", "无空段"], ["比例", "保持原图"]],
-            0.68,
-            4.84,
-            w - 1.36,
-            0.88,
-            10.7,
-            accent,
-        )
+        add_table(slide, paper["comparison_rows_narrow"], 0.68, 4.84, w - 1.36, 0.88, 10.7, accent)
         metric_row(slide, paper["metrics"], 0.65, h - 1.30, w - 1.30, accent, 15.2)
     else:
         add_bullets(slide, ["● " + paper["problem"], "● " + paper["main_claim"]] + paper["bullets"][:3], 0.70, body_top, w * 0.55, 3.80, sizes, name="BODY_POSITION", space_after=1.1)
         metric_row(slide, paper["metrics"], w * 0.62, body_top + 0.20, w * 0.32, accent, 16.0)
-        add_bullets(slide, ["• 方法亮点需要同时覆盖建模、求解和验证，避免只复述摘要。", "• 后续生成时优先保留可编辑公式、原生表格和清晰图像区域。"], w * 0.62, body_top + 2.40, w * 0.32, 1.40, sizes, name="BODY_POSITION_SIDE", space_after=0.8)
+        add_bullets(slide, paper["position_notes"], w * 0.62, body_top + 2.40, w * 0.32, 1.40, sizes, name="BODY_POSITION_SIDE", space_after=0.8)
         add_rule(slide, 0.76, h - 1.58, w - 1.52, accent)
-        add_table(
-            slide,
-            [["模板压力项", "检查目标", "通过标准"], ["正文", "字号层级", "无逐页漂移"], ["图表", "比例与边界", "不重叠不越界"]],
-            0.92,
-            h - 1.32,
-            w - 1.84,
-            0.84,
-            10.8,
-            accent,
-        )
+        add_table(slide, paper["comparison_rows_wide"], 0.92, h - 1.32, w - 1.84, 0.84, 10.8, accent)
 
 
 def method_overview(prs: Presentation, paper: dict[str, Any], assets: dict[str, Path], accent: RGBColor, sizes: dict[str, float]) -> None:
@@ -447,14 +464,14 @@ def method_overview(prs: Presentation, paper: dict[str, Any], assets: dict[str, 
             accent,
         )
         add_rule(slide, 0.68, 4.72, w - 1.36, accent)
-        add_bullets(slide, ["• 图中流程从候选生成、约束筛选到控制执行形成闭环，窄版模板也保持左图右文的单一阅读方向。", "• 图片区域按真实比例放置，不把方形流程图强行拉成横向图。"], 0.72, 4.92, w - 1.44, 0.78, sizes, name="BODY_METHOD_BOTTOM", space_after=0.35)
-        metric_row(slide, [["图像", "按比例"], ["文字", "固定层级"], ["底部", "无空带"]], 0.82, 6.04, w - 1.64, accent, 14.8)
+        add_bullets(slide, paper["method_notes_narrow"], 0.72, 4.92, w - 1.44, 0.78, sizes, name="BODY_METHOD_BOTTOM", space_after=0.35)
+        metric_row(slide, [["流程", "候选生成"], ["约束", "安全筛选"], ["输出", "连续轨迹"]], 0.82, 6.04, w - 1.64, accent, 14.8)
     else:
         fit_picture(slide, assets["square"], 0.76, 1.52, w * 0.47, 4.15, name="FIG_PIPELINE")
-        add_bullets(slide, paper["bullets"] + ["• 图像区域按真实宽高比放置，右侧解释只占剩余区域，避免先写文字再压缩图片。"], w * 0.54, 1.52, w * 0.38, 3.98, sizes, name="BODY_METHOD_RIGHT", space_after=0.9)
+        add_bullets(slide, paper["bullets"] + paper["method_notes_wide"], w * 0.54, 1.52, w * 0.38, 3.98, sizes, name="BODY_METHOD_RIGHT", space_after=0.9)
         add_table(
             slide,
-            [["输入", "处理", "输出"], ["paper", "抽取公式/图表", "slide plan"], ["template", "读取尺寸/色彩", "fixed regions"]],
+            paper["method_rows"],
             0.84,
             4.68,
             w - 1.68,
@@ -463,7 +480,7 @@ def method_overview(prs: Presentation, paper: dict[str, Any], assets: dict[str, 
             accent,
         )
         add_rule(slide, 0.76, 5.86, w - 1.52, accent)
-        add_bullets(slide, ["• 该页用于测试左图右文布局，所有正文仍保持项目符号、固定字号和统一缩进。"], 0.82, 6.04, w - 1.64, 0.52, sizes, name="BODY_METHOD_NOTE", space_after=0.0)
+        add_bullets(slide, paper["method_bottom_notes"], 0.82, 6.04, w - 1.64, 0.52, sizes, name="BODY_METHOD_NOTE", space_after=0.0)
 
 
 def formula_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, sizes: dict[str, float]) -> None:
@@ -476,13 +493,13 @@ def formula_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, si
         add_formula_rows(slide, paper["formula_rows"], 0.74, 1.46, w - 1.45, 0.56, sizes["formula"], accent)
         rows = [["符号", "含义"]] + paper["terms"][:4]
         add_table(slide, rows, 0.70, 3.52, w - 1.40, 1.96, sizes["table"], accent)
-        add_bullets(slide, ["● 公式页只保留核心目标、约束和动力学关系，解释放在下方符号表中，避免公式和正文互相挤压。"], 0.70, 5.78, w - 1.40, 0.76, sizes, name="BODY_FORMULA_NOTE", space_after=0.0)
+        add_bullets(slide, paper["formula_notes_narrow"], 0.70, 5.78, w - 1.40, 0.76, sizes, name="BODY_FORMULA_NOTE", space_after=0.0)
     else:
         add_formula_rows(slide, paper["formula_rows"], 0.86, 1.54, w * 0.52, 0.62, sizes["formula"], accent)
         rows = [["符号", "含义"]] + paper["terms"][:4]
         add_table(slide, rows, w * 0.60, 1.50, w * 0.34, 2.42, sizes["table"], accent)
         add_rule(slide, 0.86, 4.38, w - 1.72, accent)
-        add_bullets(slide, ["● 公式均为可编辑文本形状，行间距固定，等式编号和主体分开对齐。", "• 符号解释使用原生表格，关键安全项用红色强调，避免把公式截图贴入 PPT。"], 0.86, 4.64, w - 1.72, 1.10, sizes, name="BODY_FORMULA_EXPLAIN", space_after=0.8)
+        add_bullets(slide, paper["formula_notes_wide"], 0.86, 4.64, w - 1.72, 1.10, sizes, name="BODY_FORMULA_EXPLAIN", space_after=0.8)
         metric_row(slide, [["目标", "优化量"], ["约束", "安全集"], ["动力学", "状态传播"]], 0.98, h - 1.08, w - 1.96, accent, 15.4)
 
 
@@ -501,10 +518,10 @@ def evidence_slide(prs: Presentation, paper: dict[str, Any], assets: dict[str, P
     ]
     if w < 11.0:
         add_table(slide, rows, 0.70, 4.10, w - 1.40, 1.40, sizes["table"], accent)
-        add_bullets(slide, ["● 宽图按照原始比例居中放置，下方表格补充对比信息，避免页面下半部分空白。"], 0.70, 5.74, w - 1.40, 0.72, sizes, name="BODY_EVIDENCE", space_after=0.0)
+        add_bullets(slide, paper["evidence_notes_narrow"], 0.70, 5.74, w - 1.40, 0.72, sizes, name="BODY_EVIDENCE", space_after=0.0)
     else:
         add_table(slide, rows, 0.80, 4.16, w * 0.48, 1.36, sizes["table"], accent)
-        add_bullets(slide, ["● 宽图用于检查横向结果图不会被拉伸或截断。", "• 表格和解释位于同一阅读方向，页面不存在上下大段空白。"], w * 0.56, 4.14, w * 0.36, 1.28, sizes, name="BODY_EVIDENCE", space_after=0.7)
+        add_bullets(slide, paper["evidence_notes_wide"], w * 0.56, 4.14, w * 0.36, 1.28, sizes, name="BODY_EVIDENCE", space_after=0.7)
         metric_row(slide, [["宽图", "自然比例"], ["表格", "原生对象"], ["解释", "邻近证据"]], 0.94, h - 1.08, w - 1.88, accent, 15.4)
 
 
@@ -513,15 +530,16 @@ def narrow_figure_slide(prs: Presentation, paper: dict[str, Any], assets: dict[s
     h = prs.slide_height / EMU_PER_INCH
     slide = add_blank_slide(prs)
     add_header(slide, w, h, accent, "Part. 03", "实验与结果")
-    add_section(slide, w, 0.78, "3.2", "窄图与长术语换行检查", accent)
+    add_section(slide, w, 0.78, "3.2", "纵向流程与术语解释", accent)
     if w < 11.0:
         fit_picture(slide, assets["tall"], 0.70, 1.42, 3.35, 4.85, name="FIG_TALL_FLOW")
-        add_bullets(slide, ["● 窄图按真实比例放在左侧，不强行铺满宽区域。", "• 右侧保留足够宽度，避免 safety-assurance-filter 等英文术语出现无意义孤行。", "• 图像解释紧邻图像，正文和图像之间有稳定间距。"], 4.32, 1.48, w - 4.85, 3.48, sizes, name="BODY_NARROW", space_after=0.8)
+        add_bullets(slide, paper["tall_figure_notes_narrow"], 4.32, 1.48, w - 4.85, 3.48, sizes, name="BODY_NARROW", space_after=0.8)
+        add_table(slide, [["变量", "含义"]] + paper["terms"][:2], 4.34, 5.18, w - 4.90, 0.92, 9.6, accent)
     else:
         fit_picture(slide, assets["tall"], 0.92, 1.42, w * 0.28, 4.80, name="FIG_TALL_FLOW")
-        add_bullets(slide, ["● 窄图模板压力主要来自图片比例和正文宽度的冲突。", "• 生成器应先依据图片真实比例确定证据区域，再将长英文术语放到更宽的解释区。", "• 该页检查图文不重叠、正文不越界、段落之间没有空段落或异常大间距。"], w * 0.39, 1.52, w * 0.52, 2.82, sizes, name="BODY_NARROW", space_after=0.9)
+        add_bullets(slide, paper["tall_figure_notes_wide"], w * 0.39, 1.52, w * 0.52, 2.82, sizes, name="BODY_NARROW", space_after=0.9)
         add_rule(slide, w * 0.39, 4.70, w * 0.52, accent)
-        add_bullets(slide, ["• 对不同模板，正文框宽度随页面宽高比重新计算，不复用固定 13.33 x 7.5 的坐标。"], w * 0.39, 4.92, w * 0.52, 0.70, sizes, name="BODY_NARROW_NOTE", space_after=0.0)
+        add_bullets(slide, paper["tall_figure_bottom_notes"], w * 0.39, 4.92, w * 0.52, 0.70, sizes, name="BODY_NARROW_NOTE", space_after=0.0)
 
 
 def summary_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, sizes: dict[str, float]) -> None:
@@ -532,22 +550,19 @@ def summary_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, si
     add_section(slide, w, 0.78, "4.1", "报告结论", accent)
     summary_lines = [
         "● " + paper["main_claim"],
-        "• 该方法的汇报重点落在问题建模、公式约束、算法流程和实验验证之间的对应关系。",
-        "• 模板适配时保持封面和结尾色彩一致，正文页使用同一字体层级和同一阅读方向。",
+        "• " + paper["summary_method"],
+        "• " + paper["summary_result"],
         "• 局限部分只描述方法边界，不写提示演讲者的过程性语言。",
     ]
     if w < 11.0:
-        summary_lines.extend([
-            "• 该压力样例覆盖宽图、窄图、表格、公式和英文长术语，主要用于回归检查。",
-            "• 新模板失败时优先调整区域划分，而不是缩小字体或加入手动换行。",
-        ])
+        summary_lines.extend(paper["summary_extra"])
     add_bullets(slide, summary_lines, 0.76, 1.52, w - 1.52, 3.52 if w < 11.0 else 2.06, sizes, name="BODY_SUMMARY", space_after=0.62)
     if w < 11.0:
-        add_table(slide, [["对象", "约束"], ["正文", "统一字号"], ["公式", "固定行距"], ["图片", "按比例"]], 0.88, 4.70, w - 1.76, 0.90, 10.7, accent)
+        add_table(slide, [["对象", "约束"], ["轨迹", "连续性"], ["公式", "固定行距"], ["图像", "比例保持"]], 0.88, 4.70, w - 1.76, 0.90, 10.7, accent)
     else:
         add_table(
             slide,
-            [["回归对象", "主要风险", "脚本处理"], ["4:3 模板", "内容集中在上半页", "下方证据 band"], ["深色/彩色母版", "占位符污染", "清理 placeholder"], ["图表页", "比例和重叠", "渲染扫描"]],
+            paper["summary_rows"],
             0.88,
             3.55,
             w - 1.76,
@@ -555,8 +570,8 @@ def summary_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, si
             10.8,
             accent,
         )
-        add_bullets(slide, ["• 表格位于正文和底部指标之间，保证宽屏模板中段也有连续信息层。"], 0.96, 4.96, w - 1.92, 0.44, sizes, name="BODY_SUMMARY_BRIDGE", space_after=0.0)
-    metric_row(slide, [["公式", "可编辑文本"], ["图片", "比例保持"], ["QA", "审计与渲染扫描"]], 0.88, h - 1.32, w - 1.76, accent, 15.2 if w < 11.0 else 15.8)
+        add_bullets(slide, paper["summary_bridge"], 0.96, 4.96, w - 1.92, 0.44, sizes, name="BODY_SUMMARY_BRIDGE", space_after=0.0)
+    metric_row(slide, [["公式", "可编辑文本"], ["图片", "比例保持"], ["结论", "方法边界"]], 0.88, h - 1.32, w - 1.76, accent, 15.2 if w < 11.0 else 15.8)
 
 
 def thanks_slide(prs: Presentation, accent: RGBColor, template_id: str) -> None:
@@ -569,7 +584,7 @@ def thanks_slide(prs: Presentation, accent: RGBColor, template_id: str) -> None:
     add_rect(slide, 0, band_y, w, band_h, accent)
     title_color = WHITE if brightness(accent) < 0.72 else BLACK
     add_plain(slide, "谢谢！", w * 0.10, band_y + band_h * 0.33, w * 0.80, 0.64, 42.0, name="THANKS_TITLE", bold=True, color=title_color, align=PP_ALIGN.CENTER)
-    add_plain(slide, f"template smoke: {template_id}", w * 0.36, h - 0.72, w * 0.28, 0.24, 12.0, name="THANKS_FOOTER", color=accent, align=PP_ALIGN.CENTER)
+    add_plain(slide, "学术论文汇报", w * 0.36, h - 0.72, w * 0.28, 0.24, 12.0, name="THANKS_FOOTER", color=accent, align=PP_ALIGN.CENTER)
 
 
 def build_deck(template: dict[str, Any], paper: dict[str, Any], out_dir: Path, *, template_root: Path | None) -> tuple[Path, str]:

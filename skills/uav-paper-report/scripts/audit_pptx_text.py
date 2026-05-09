@@ -28,6 +28,7 @@ PT_PER_INCH = 72
 SUSPICIOUS = [
     "报告口径",
     "从汇报角度",
+    "汇报重点",
     "讲解重点",
     "应该强调",
     "这一页",
@@ -48,6 +49,18 @@ SUSPICIOUS = [
     "key point to explain",
     "should emphasize",
     "future-work advice",
+    "模板压力",
+    "回归检查",
+    "回归对象",
+    "通过标准",
+    "用于测试",
+    "该页检查",
+    "生成器应",
+    "PPTX 审计",
+    "template smoke",
+    "multi-template regression",
+    "scaffold",
+    "QA",
 ]
 
 BLANK_PATTERNS = [

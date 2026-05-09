@@ -17,7 +17,8 @@ Use this checklist before delivering a deck.
 Check the preview grid first, then individual risk slides.
 
 - Cover and thanks slide use consistent accepted blue.
-- When adapting a template, visible master placeholders such as `单击此处...`, `Click to...`, dates, footers, and slide-number placeholders have been removed before adding content.
+- When adapting a template, visible master placeholders such as `单击此处...`, `Click to...`, dates, footers, and slide-number placeholders have been removed or intentionally covered before adding content.
+- Rendered body slides do not expose template sample text such as lab names, `author`, `title`, dates, footer bars, or page-number widgets unless the user explicitly wants that template element.
 - Slide regions are computed from the actual deck size; no layout assumes a fixed 13.33 x 7.5 canvas.
 - No text overlaps other text, images, tables, formulas, or rules.
 - No text visually touches a rule, metric row, image, table, or formula after LibreOffice PDF export.
@@ -45,6 +46,7 @@ Check the preview grid first, then individual risk slides.
 - Paragraphs have bullets or clear markers.
 - First sentences in body areas are also formatted as bullets or labeled claims; no loose unformatted opening sentence.
 - Red/bold emphasis is sparse and meaningful.
+- Red emphasis is applied only to the decisive word, phrase, or number, not to a full explanatory paragraph.
 - Three-column layouts have balanced column heights; no single column wraps into the next horizontal region.
 - Slides do not mix vertical stacking and side-by-side reading paths without a visible separator.
 - Text regions were given rendered slack; no final text line touches a rule, image, table, formula, or bottom margin.
@@ -60,7 +62,7 @@ Open individual PNGs, not only the preview grid, for:
 - any slide where the crop was changed;
 - any slide where a shape-overlap checker previously failed.
 - any slide changed in this pass to fix blank area, text overlap, image overlap, or rule collision.
-- any slide flagged by `scan_rendered_slides.py` for high blank fraction, top/bottom blank, or internal whitespace.
+- any slide flagged by `scan_rendered_slides.py` for high blank fraction, top/bottom blank, internal whitespace, or an empty body quadrant.
 
 For each risk slide, verify the rendered PNG directly:
 

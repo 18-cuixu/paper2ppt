@@ -39,9 +39,6 @@ REMOVED_PART_PREFIXES = (
 )
 REMOVED_PARTS = {
     "docProps/custom.xml",
-    "docProps/thumbnail.jpeg",
-    "docProps/thumbnail.jpg",
-    "docProps/thumbnail.png",
     "ppt/commentAuthors.xml",
     "ppt/authors.xml",
     "ppt/people.xml",
@@ -107,7 +104,6 @@ def target_is_removed(target: str) -> bool:
         or normalized.startswith("persons/")
         or normalized in {"commentAuthors.xml", "authors.xml", "people.xml"}
         or normalized == "docProps/custom.xml"
-        or normalized in {"docProps/thumbnail.jpeg", "docProps/thumbnail.jpg", "docProps/thumbnail.png"}
     )
 
 

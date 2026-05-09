@@ -11,6 +11,8 @@
 - 普通正文不能依赖空段落、空文本框或手动换行制造间距；需要通过区域宽度、段落间距和页面重排解决。
 - scaffold 默认拒绝正文中的 `\n`，只允许封面标题或显式图示节点使用有意分行；公式长行需要拆成稳定短行。
 - 新生成的报告建议使用 `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`，公开示例也已清理空文本体。
+- 新增多模板 profile 与回归矩阵：`compact`、`dense-visual`、`classic-large` 分别对应不同模板的固定字号层级，避免把模板差异误判成随意改字号。
+- 新增 `run_template_matrix.py`，可批量审计、渲染和扫描多个论文示例与模板风格；新生成结果的导出和渲染扫描仍是硬门槛。
 - 生成后必须按顺序完成：PPTX 审计、LibreOffice 导出、PNG 渲染、渲染页扫描和风险页人工检查。
 
 `paper2ppt` 收录了一个用于论文汇报 PPT 生成与审查的 Codex Skill：`uav-paper-report`。它面向无人机、机器人、规划、SLAM、控制和自主系统方向的中文组会/论文汇报，目标是支持“给定论文 + 给定 PPT 模板/示例风格”的多模板生成，而不是固定在单一版式上。当前重点是让生成结果保持风格一致、内容密度足够、公式和图表可讲、图片裁剪干净，并通过渲染后的视觉 QA 反复检查。
@@ -42,7 +44,8 @@ paper2ppt/
       └─ assets/
          ├─ examples/
          ├─ scaffolds/
-         └─ screenshots/
+         ├─ screenshots/
+         └─ template-profiles/
 ```
 
 ### Skill 能做什么
@@ -57,10 +60,11 @@ paper2ppt/
 
 ### 当前进度
 
-- 已整理 4 份公开 AI 生成示例 PPTX，覆盖轨迹规划、强化学习导航、多机 CBF 规划和多机覆盖路径规划等方向。
+- 已整理 5 份公开 AI 生成示例 PPTX，覆盖轨迹规划、强化学习导航、多机 CBF 规划、多机覆盖路径规划和深色模板适配等方向。
 - 已形成可复用的 `python-pptx` scaffold，包括封面/结尾、正文项目符号、公式行、原生表格、流程图、图片裁剪和指标条。
 - 已支持多模板风格迁移的工作流：先读取用户模板或示例 deck，再按其版式节奏生成新论文汇报。
 - 已加入严格 PPTX 审计：空文本体、正文手动换行、异常段落间距、窄公式长行、内容重叠、字体层级漂移和越界 shape。
+- 已加入多模板回归矩阵，当前覆盖 5 个论文/模板组合；最新质量基线会进行 PPTX 审计、LibreOffice 导出、PNG 渲染和空白扫描。
 - 已加入隐私清理：发布前清理 PPTX 元数据、备注、批注和可见个人信息。
 
 ### 后续目标
@@ -112,7 +116,8 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 6. 将 PDF 渲染为逐页 PNG 和 preview grid。
 7. 运行文本审查和渲染扫描脚本。
 8. 人工检查公式页、图片页、表格页和本轮修改过的页面。
-9. 如果要提交到公开仓库，先运行隐私清理脚本并检查示例和生成结果 PPTX。
+9. 多模板测试时运行 `python .\skills\uav-paper-report\scripts\run_template_matrix.py --out-dir .\skills\uav-paper-report\out\template-matrix --keep-going`。
+10. 如果要提交到公开仓库，先运行隐私清理脚本并检查示例和生成结果 PPTX。
 
 ### 质量规则
 
@@ -120,6 +125,7 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 
 - 正文字体统一使用 Times New Roman。
 - 普通正文需要项目符号和正确缩进，不保留无意义空行。
+- 字号层级按模板 profile 固定，不能逐页临时调字号；审计可用 `--profile compact`、`--profile dense-visual` 或 `--profile classic-large`。
 - 关键术语和关键数字可以加粗/标红，但不能大面积红字。
 - 公式应尽量用 PPT 原生文本/shape 方式表达，并保持字号统一。
 - 图片必须保持比例，不能和文字重叠，也不能裁掉关键内容。
@@ -133,6 +139,7 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 - `scripts/sanitize_pptx_privacy.py`：清理 PPTX 个人信息、备注、批注、自定义属性和可见汇报人姓名。
 - `scripts/render_pptx_previews.py`：把导出的 PDF 渲染为逐页 PNG 和 preview grid。
 - `scripts/scan_rendered_slides.py`：扫描空白过多、拥挤和异常空白带。
+- `scripts/run_template_matrix.py`：按 `assets/template-profiles/matrix.json` 批量测试多论文、多模板示例。
 - `scripts/check_dependencies.py`：检查基础依赖。
 
 上传前建议执行：
@@ -146,6 +153,7 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 
 - `assets/examples/`：AI 生成并检查过的示例 PPT。
 - `assets/examples/*.pptx`：已经验证过的示例 PPT。
+- `assets/template-profiles/matrix.json`：多模板测试矩阵。
 - `assets/scaffolds/*.py`：可复用的生成脚本。
 
 ### 说明
@@ -161,6 +169,8 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 - Normal body spacing must come from layout geometry and paragraph spacing, not empty paragraphs, empty text boxes, or manual line breaks.
 - Scaffolds now reject `\n` in body text by default. Only cover titles or explicit diagram nodes should use intentional multi-line text; long formula rows must be split into stable short rows.
 - New generated decks should run `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`; public examples have also been cleaned of empty text bodies.
+- Added template-aware audit profiles: `compact`, `dense-visual`, and `classic-large` map different templates to fixed font hierarchies instead of treating template differences as arbitrary font drift.
+- Added `run_template_matrix.py` for batch audit, render, and rendered-slide scan across multiple paper/template examples. New generated decks still fail hard on export or scan defects.
 - Each generated deck should pass, in order: PPTX audit, LibreOffice export, PNG rendering, rendered-slide scan, and manual risk-slide inspection.
 
 `paper2ppt` contains a Codex Skill named `uav-paper-report` for generating and auditing academic paper-report PowerPoint decks. It is designed for Chinese group-meeting or thesis-style reports on UAVs, robotics, planning, SLAM, control, and autonomous systems. The goal is multi-template generation from a paper plus a user-provided PPT template or example style, rather than a single fixed layout. The workflow emphasizes style fidelity, content density, editable formulas, clean figure crops, layout checks, and rendered visual QA.
@@ -192,7 +202,8 @@ paper2ppt/
       └─ assets/
          ├─ examples/
          ├─ scaffolds/
-         └─ screenshots/
+         ├─ screenshots/
+         └─ template-profiles/
 ```
 
 ### What The Skill Does
@@ -207,10 +218,11 @@ paper2ppt/
 
 ### Current Progress
 
-- Collected 4 public AI-generated example PPTX decks covering trajectory planning, RL navigation, multi-quadrotor CBF planning, and multi-UAV coverage path planning.
+- Collected 5 public AI-generated example PPTX decks covering trajectory planning, RL navigation, multi-quadrotor CBF planning, multi-UAV coverage path planning, and a dark-cyan template adaptation.
 - Built reusable `python-pptx` scaffolds for covers, closing slides, bullet hierarchy, formula rows, native tables, process diagrams, figure crops, and metric rows.
 - Established a multi-template workflow: inspect the user template or example deck first, then generate a new paper report following its visual rhythm.
 - Added strict PPTX auditing for empty text bodies, manual body newlines, abnormal paragraph spacing, long formula rows in narrow boxes, content overlap, font hierarchy drift, and out-of-bounds shapes.
+- Added a multi-template regression matrix covering 5 paper/template combinations. The newest quality baselines run PPTX audit, LibreOffice export, PNG rendering, and rendered-slide blank-area scan.
 - Added privacy sanitization for PPTX metadata, notes, comments, and visible personal information before public release.
 
 ### Roadmap
@@ -262,7 +274,8 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 6. Render the PDF into per-slide PNG previews and a preview grid.
 7. Run text audit and rendered-slide scan scripts.
 8. Manually inspect formula slides, image-heavy slides, tables, and any edited in this pass pages.
-9. Before committing to a public repository, sanitize and check all example/generated PPTX assets.
+9. For multi-template testing, run `python .\skills\uav-paper-report\scripts\run_template_matrix.py --out-dir .\skills\uav-paper-report\out\template-matrix --keep-going`.
+10. Before committing to a public repository, sanitize and check all example/generated PPTX assets.
 
 ### Quality Rules
 
@@ -271,6 +284,7 @@ This skill focuses on the following issues:
 - Use Times New Roman consistently for body text.
 - Body paragraphs need bullets and proper indentation; meaningless blank lines, empty text bodies, and manual body newlines should not remain.
 - Body font sizes should use a fixed hierarchy across the deck instead of changing slide by slide to force content to fit.
+- Font hierarchy is template-profile based. Use `--profile compact`, `--profile dense-visual`, or `--profile classic-large` for audit instead of manually loosening thresholds.
 - Key terms and numbers may be bold/red, but most text should stay black.
 - Formulas should preferably be editable PowerPoint-native text/shapes with consistent sizing.
 - Images must preserve aspect ratio, avoid text overlap, and keep important content visible.
@@ -284,6 +298,7 @@ This skill focuses on the following issues:
 - `scripts/sanitize_pptx_privacy.py`: removes PPTX personal information, notes, comments, custom properties, and visible presenter names.
 - `scripts/render_pptx_previews.py`: renders exported PDFs into slide PNGs and a preview grid.
 - `scripts/scan_rendered_slides.py`: scans for excessive blank space, crowding, and large internal whitespace bands.
+- `scripts/run_template_matrix.py`: runs the registered multi-paper, multi-template regression matrix from `assets/template-profiles/matrix.json`.
 - `scripts/check_dependencies.py`: checks basic runtime dependencies.
 
 Recommended pre-upload commands:
@@ -297,6 +312,7 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 
 - `assets/examples/`: AI-generated and checked example decks.
 - `assets/examples/*.pptx`: validated example decks.
+- `assets/template-profiles/matrix.json`: multi-template test matrix.
 - `assets/scaffolds/*.py`: reusable generation scripts.
 
 ### Notes

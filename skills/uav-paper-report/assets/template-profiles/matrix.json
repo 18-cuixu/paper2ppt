@@ -1,0 +1,77 @@
+{
+  "profiles": {
+    "compact-blue": {
+      "audit_profile": "compact",
+      "description": "Accepted blue academic report style with compact 18 pt body hierarchy.",
+      "expected_body": {
+        "main": "17.6-18.8 pt",
+        "secondary": "16.4-17.6 pt",
+        "tertiary": "16.0-16.9 pt"
+      }
+    },
+    "classic-blue-large": {
+      "audit_profile": "classic-large",
+      "description": "Earlier blue academic style with larger live-report body text.",
+      "expected_body": {
+        "main": "18.0-21.2 pt",
+        "secondary": "16.8-21.0 pt",
+        "tertiary": "16.0-20.2 pt"
+      }
+    },
+    "dense-visual-blue": {
+      "audit_profile": "dense-visual",
+      "description": "Dense visual/report style for figure-heavy method and experiment pages.",
+      "expected_body": {
+        "main": "17.6-19.1 pt",
+        "secondary": "15.8-18.0 pt",
+        "tertiary": "15.8-17.1 pt"
+      }
+    },
+    "dark-cyan": {
+      "audit_profile": "dense-visual",
+      "description": "Charcoal/cyan template style with dark cover and compact evidence pages.",
+      "expected_body": {
+        "main": "17.6-19.1 pt",
+        "secondary": "15.8-18.0 pt",
+        "tertiary": "15.8-17.1 pt"
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "ego-planner-classic-blue",
+      "paper": "EGO-Planner, quadrotor trajectory replanning",
+      "template_profile": "classic-blue-large",
+      "pptx": "../examples/ego-planner-report.pptx",
+      "legacy_pdf_baseline": true
+    },
+    {
+      "id": "v60-classic-blue",
+      "paper": "Multi-UAV coverage path planning",
+      "template_profile": "classic-blue-large",
+      "pptx": "../examples/uav-paper-report-v60.pptx",
+      "legacy_pdf_baseline": true
+    },
+    {
+      "id": "rl-privileged-dense-blue",
+      "paper": "Privileged-learning quadrotor navigation",
+      "template_profile": "dense-visual-blue",
+      "pptx": "../examples/uav-rl-privileged-report.pptx",
+      "legacy_pdf_baseline": true,
+      "scan_blank_warn": 0.82
+    },
+    {
+      "id": "multi-quad-cbf-compact-blue",
+      "paper": "Multi-quadrotor cooperative manipulation with CBFs",
+      "template_profile": "dense-visual-blue",
+      "pptx": "../examples/uav-multi-quad-cbf-report.pptx",
+      "legacy_pdf_baseline": true
+    },
+    {
+      "id": "quad-lcd-dark-cyan",
+      "paper": "Quadrotor learning/control display template adaptation",
+      "template_profile": "dark-cyan",
+      "pptx": "../examples/quad-lcd-dark-template-report.pptx"
+    }
+  ]
+}

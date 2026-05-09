@@ -57,6 +57,42 @@ BULLET_LEVELS = {
 CONTENT_SHAPE_NAMES = ("MATH_",)
 INTENTIONAL_BREAK_SHAPE_NAMES = ("DIAG_",)
 
+PROFILE_PRESETS = {
+    "compact": {
+        "main_min": 17.6,
+        "main_max": 18.8,
+        "secondary_min": 16.4,
+        "secondary_max": 17.6,
+        "tertiary_min": 16.0,
+        "tertiary_max": 16.9,
+        "max_level_spread": 0.8,
+        "max_run_spread": 1.0,
+        "max_formula_width_factor": 1.05,
+    },
+    "dense-visual": {
+        "main_min": 17.6,
+        "main_max": 19.1,
+        "secondary_min": 15.8,
+        "secondary_max": 18.0,
+        "tertiary_min": 15.8,
+        "tertiary_max": 17.1,
+        "max_level_spread": 2.0,
+        "max_run_spread": 1.2,
+        "max_formula_width_factor": 1.15,
+    },
+    "classic-large": {
+        "main_min": 18.0,
+        "main_max": 21.2,
+        "secondary_min": 16.8,
+        "secondary_max": 21.0,
+        "tertiary_min": 16.0,
+        "tertiary_max": 20.2,
+        "max_level_spread": 4.4,
+        "max_run_spread": 1.4,
+        "max_formula_width_factor": 1.12,
+    },
+}
+
 
 def bullet_level(text: str) -> str | None:
     stripped = text.lstrip()
@@ -283,6 +319,12 @@ def main() -> int:
         action="store_true",
         help="Require fixed bullet-size bands and small per-level font drift.",
     )
+    parser.add_argument(
+        "--profile",
+        choices=sorted(PROFILE_PRESETS),
+        default=None,
+        help="Use a template-aware body hierarchy preset before applying explicit CLI overrides.",
+    )
     parser.add_argument("--main-min", type=float, default=17.6)
     parser.add_argument("--main-max", type=float, default=18.8)
     parser.add_argument("--secondary-min", type=float, default=16.4)
@@ -295,6 +337,10 @@ def main() -> int:
     parser.add_argument("--max-body-space-before", type=float, default=0.5)
     parser.add_argument("--max-formula-width-factor", type=float, default=1.05)
     args = parser.parse_args()
+
+    if args.profile:
+        for key, value in PROFILE_PRESETS[args.profile].items():
+            setattr(args, key, value)
 
     pptx_files = collect_pptx(args.paths)
     if not pptx_files:

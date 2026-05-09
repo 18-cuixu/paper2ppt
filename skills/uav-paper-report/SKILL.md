@@ -23,7 +23,8 @@ Use this sequence for every full deck or substantial revision:
 6. Generate editable PPTX with native PowerPoint content: text boxes, shapes, native diagrams, tables, editable formula text, and clean cropped paper figures.
 7. Export to PDF, render slide PNGs, inspect the preview grid and individual risk slides, then iterate until the QA gates pass. Run render and scan steps sequentially; do not scan while PNGs are still being written.
 8. If the deck, examples, or scaffolds will be published or uploaded, run `scripts/sanitize_pptx_privacy.py` on every PPTX asset and verify no personal metadata, notes, comments, or visible presenter names remain.
-9. Sync final PPTX, PDF, preview grid, slide PNGs, and any reproducible build/crop scripts to the user's requested output directory.
+9. For multi-template work, register the case in `assets/template-profiles/matrix.json` and run `scripts/run_template_matrix.py`. New generated decks are blocking failures if PPTX audit, export, render, or rendered-slide scan fails. Legacy reference PDFs may stay non-blocking only when explicitly marked as `legacy_pdf_baseline`.
+10. Sync final PPTX, PDF, preview grid, slide PNGs, and any reproducible build/crop scripts to the user's requested output directory.
 
 ## Deck Structure
 
@@ -45,6 +46,7 @@ Use the accepted header rhythm, blue cover/ending band, and horizontal rules. Ke
 
 - Font: Times New Roman for all runs, including Chinese text when the user asks for 新罗马.
 - Body sizes must be consistent within a deck. Pick a small hierarchy and reuse it: main bullets about 17.8-18.5 pt, secondary bullets about 16.8-17.4 pt, tertiary bullets about 16.2-16.6 pt, tables about 11.8-13.0 pt, formulas about 18.5-21 pt. Do not tune body font size slide by slide just to make content fit.
+- Template profiles may use different fixed hierarchies. Use `audit_pptx_text.py --profile compact`, `--profile dense-visual`, or `--profile classic-large` instead of loosening thresholds manually. The profile must match the template rhythm, and font drift inside that profile still fails.
 - Bullets: every paragraph in body areas needs a marker and proper hanging indent. Use `●` for level 0, `•` for level 1, `–` for level 2.
 - Emphasis: bold/red only for key terms, core numbers, algorithm names, or decisive comparison results. Do not make most of a slide red.
 - Layout: keep one reading direction per slide. Use either top-to-bottom regions or a clear left-right comparison, not mixed random blocks.
@@ -126,6 +128,7 @@ For Python decks, start from `assets/scaffolds/build_ego_deck.py` and `assets/sc
 - A render-budget helper or equivalent manual calculation: estimate mixed Chinese/English line count, use conservative text box heights, and never place a rule/image immediately below the expected final line.
 - A slide lint pass before save: reject empty paragraphs, body-text `\n`, standalone bullet markers, oversized paragraph spacing, font sizes outside the section hierarchy, picture regions with poor aspect-ratio fit, and content slides whose planned occupied area is visibly under target.
 - The slide lint pass must also reject empty `p:txBody` nodes, mixed empty/text paragraphs, manual `a:br` line-break elements, long formula rows in narrow formula boxes, content-shape overlap, fixed-hierarchy font drift, and any shape whose bounds exceed the slide. Run `scripts/audit_pptx_text.py --strict-body-hierarchy --fail-on-warning` on the generated PPTX before rendering.
+- For template-specific audits, use the matching profile: `--profile compact` for compact blue decks, `--profile dense-visual` for figure/formula-heavy or dark-cyan decks, and `--profile classic-large` for older large-font blue decks. Do not mark a new deck as legacy to bypass rendered scan warnings.
 - A privacy lint pass before upload or publication: use `scripts/sanitize_pptx_privacy.py --in-place` for example/generated PPTX files, then run it again with `--check-only --fail-on-warning`. Do not publish PPTX files containing author names, editor names, comments, notes slides, custom properties, or visible personal presenter text.
 
 For visual slides:
@@ -156,6 +159,7 @@ Before final response:
 8. Fix all blocking issues: overlap, text/image collision, bad image crops, wrong image proportions, meaningless blank lines, excessive blank area, inconsistent cover/ending color, wrong font scale, formula crowding, malformed table proportions, and AI-sounding wording.
 9. For repository uploads or shared skill packages, run `scripts/sanitize_pptx_privacy.py` over `assets/examples`, then run `--check-only --fail-on-warning`.
 10. After any final edit, inspect at least the cover, thanks slide, all formula slides, all image-heavy slides, and any slide that previously had excessive blank area. Passing automated scripts alone is not enough.
+11. For multi-template regression, run `python scripts/run_template_matrix.py --out-dir out/template-matrix --keep-going`. Treat any non-legacy scan/export/audit failure as a blocking defect.
 
 The preview grid is not enough for final QA. Open individual slide PNGs when a slide contains formulas, dense tables, multiple figures, any small text, a three-column layout, a metric row, or a slide changed in this pass for blank-area/overlap issues.
 
@@ -166,8 +170,11 @@ The preview grid is not enough for final QA. Open individual slide PNGs when a s
 - `assets/examples/uav-paper-report-v60.pptx`: accepted earlier UAV paper report deck.
 - `assets/examples/uav-rl-privileged-report.pptx`: accepted RL privileged-information quadrotor report deck with editable run-based formulas, native network diagram, and validated density.
 - `assets/examples/uav-multi-quad-cbf-report.pptx`: accepted multi-quadrotor cooperative-manipulation CBF report deck with formula/table-heavy method slides, native tables, paper figure crops, and validated blank-area scan.
+- `assets/examples/quad-lcd-dark-template-report.pptx`: dark-cyan template adaptation example that must pass PPTX audit, LibreOffice export, PNG render, and rendered-slide scan.
+- `assets/template-profiles/matrix.json`: multi-template regression matrix covering blue large, dense visual, compact formula/table, and dark-cyan styles.
 - `assets/scaffolds/*.py`: build scripts from accepted decks. Use as patterns, not as fixed content.
 - `references/dependencies.md`: packages and environment checks.
 - `references/style-guide.md`: detailed layout and typography rules.
 - `references/qa-checklist.md`: final review checklist.
 - `scripts/sanitize_pptx_privacy.py`: remove PPTX personal metadata, notes, comments, custom properties, and visible presenter names before publishing.
+- `scripts/run_template_matrix.py`: run template-aware audit, render, and scan across the registered examples.

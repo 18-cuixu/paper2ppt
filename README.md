@@ -13,9 +13,19 @@
 - 新生成的报告建议使用 `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`，公开示例也已清理空文本体。
 - 生成后必须按顺序完成：PPTX 审计、LibreOffice 导出、PNG 渲染、渲染页扫描和风险页人工检查。
 
-`paper2ppt` 收录了一个用于论文汇报 PPT 生成与审查的 Codex Skill：`uav-paper-report`。它面向无人机、机器人、规划、SLAM、控制和自主系统方向的中文组会/论文汇报，强调风格一致、内容密度、公式表达、图片裁剪、排版检查和渲染后的视觉 QA。
+`paper2ppt` 收录了一个用于论文汇报 PPT 生成与审查的 Codex Skill：`uav-paper-report`。它面向无人机、机器人、规划、SLAM、控制和自主系统方向的中文组会/论文汇报，目标是支持“给定论文 + 给定 PPT 模板/示例风格”的多模板生成，而不是固定在单一版式上。当前重点是让生成结果保持风格一致、内容密度足够、公式和图表可讲、图片裁剪干净，并通过渲染后的视觉 QA 反复检查。
 
-公开仓库只保留 AI 生成示例、生成脚本和审查脚本；不包含原始汇报模板或任何个人汇报材料。
+公开仓库只保留 AI 生成示例、生成脚本、截图和审查脚本；不包含原始私有模板或任何个人汇报材料。
+
+### 效果截图
+
+| 多模板预览 | 方法定位页 |
+| --- | --- |
+| ![Quad-LCD preview grid](skills/uav-paper-report/assets/screenshots/quad-lcd-preview-grid.jpg) | ![Quad-LCD analysis](skills/uav-paper-report/assets/screenshots/quad-lcd-analysis.jpg) |
+
+| RL 方法图 | RL 结果表 | CBF 公式排版 |
+| --- | --- | --- |
+| ![RL method diagram](skills/uav-paper-report/assets/screenshots/rl-method-diagram.jpg) | ![RL result table](skills/uav-paper-report/assets/screenshots/rl-result-table.jpg) | ![CBF formula layout](skills/uav-paper-report/assets/screenshots/cbf-formula-layout.jpg) |
 
 ### 仓库内容
 
@@ -31,18 +41,36 @@ paper2ppt/
       ├─ references/
       └─ assets/
          ├─ examples/
-         └─ scaffolds/
+         ├─ scaffolds/
+         └─ screenshots/
 ```
 
 ### Skill 能做什么
 
 - 根据论文 PDF 和用户提供的 PPT 风格生成中文学术汇报 PPT。
-- 复用参考风格，包括封面、结尾页、页眉、横线、字体层级和蓝色主题。
+- 复用不同模板/示例的视觉风格，包括封面、结尾页、页眉、横线、字体层级、配色、表格和公式区。
 - 生成较完整的论文汇报结构：背景、技术要点、方法、公式、实验、局限和总结。
 - 使用原生 PPT 文本、表格、形状和可编辑公式表达，避免把整页做成截图。
 - 对图片裁剪、比例、图文间距、空白区域、重叠、无意义换行和 AI 化表述进行检查。
 - 发布或上传前清理 PPTX 示例和生成结果中的个人信息、备注、批注和文档元数据。
 - 提供已验证的 scaffold 脚本和示例 PPT，便于复用。
+
+### 当前进度
+
+- 已整理 4 份公开 AI 生成示例 PPTX，覆盖轨迹规划、强化学习导航、多机 CBF 规划和多机覆盖路径规划等方向。
+- 已形成可复用的 `python-pptx` scaffold，包括封面/结尾、正文项目符号、公式行、原生表格、流程图、图片裁剪和指标条。
+- 已支持多模板风格迁移的工作流：先读取用户模板或示例 deck，再按其版式节奏生成新论文汇报。
+- 已加入严格 PPTX 审计：空文本体、正文手动换行、异常段落间距、窄公式长行、内容重叠、字体层级漂移和越界 shape。
+- 已加入隐私清理：发布前清理 PPTX 元数据、备注、批注和可见个人信息。
+
+### 后续目标
+
+- 增加模板抽取脚本，自动读取用户 PPTX 的封面、页眉、字体层级、配色、表格样式和常用版式。
+- 增加“详细/简略”内容密度参数，让背景、方法、实验和总结部分可以按用户要求扩写或压缩。
+- 改进公式生成，尽量使用更标准的 PowerPoint 原生公式或更稳定的可编辑公式组件。
+- 增加图片裁剪质量检测，自动发现比例异常、截断子图、caption 过多和图文重叠。
+- 增加更多论文领域模板，包括 SLAM、控制、路径规划、机器人学习和多智能体协同。
+- 封装更完整的命令行流程：输入 PDF、模板 PPTX 和配置文件，输出 PPTX、PDF、PNG 预览和 QA 报告。
 
 ### 安装方式
 
@@ -135,9 +163,19 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 - New generated decks should run `audit_pptx_text.py --strict-body-hierarchy --fail-on-warning`; public examples have also been cleaned of empty text bodies.
 - Each generated deck should pass, in order: PPTX audit, LibreOffice export, PNG rendering, rendered-slide scan, and manual risk-slide inspection.
 
-`paper2ppt` contains a Codex Skill named `uav-paper-report` for generating and auditing academic paper-report PowerPoint decks. It is designed for Chinese group-meeting or thesis-style reports on UAVs, robotics, planning, SLAM, control, and autonomous systems. The workflow emphasizes style fidelity, content density, editable formulas, clean figure crops, layout checks, and rendered visual QA.
+`paper2ppt` contains a Codex Skill named `uav-paper-report` for generating and auditing academic paper-report PowerPoint decks. It is designed for Chinese group-meeting or thesis-style reports on UAVs, robotics, planning, SLAM, control, and autonomous systems. The goal is multi-template generation from a paper plus a user-provided PPT template or example style, rather than a single fixed layout. The workflow emphasizes style fidelity, content density, editable formulas, clean figure crops, layout checks, and rendered visual QA.
 
-The public repository keeps only AI-generated example decks, generation scaffolds, and QA scripts. It does not include the original report template or personal report materials.
+The public repository keeps only AI-generated example decks, screenshots, generation scaffolds, and QA scripts. It does not include the original private report template or personal report materials.
+
+### Screenshots
+
+| Multi-template preview | Method positioning slide |
+| --- | --- |
+| ![Quad-LCD preview grid](skills/uav-paper-report/assets/screenshots/quad-lcd-preview-grid.jpg) | ![Quad-LCD analysis](skills/uav-paper-report/assets/screenshots/quad-lcd-analysis.jpg) |
+
+| RL method diagram | RL result table | CBF formula layout |
+| --- | --- | --- |
+| ![RL method diagram](skills/uav-paper-report/assets/screenshots/rl-method-diagram.jpg) | ![RL result table](skills/uav-paper-report/assets/screenshots/rl-result-table.jpg) | ![CBF formula layout](skills/uav-paper-report/assets/screenshots/cbf-formula-layout.jpg) |
 
 ### Repository Contents
 
@@ -153,18 +191,36 @@ paper2ppt/
       ├─ references/
       └─ assets/
          ├─ examples/
-         └─ scaffolds/
+         ├─ scaffolds/
+         └─ screenshots/
 ```
 
 ### What The Skill Does
 
 - Generates Chinese academic presentation decks from a paper PDF and a user-provided presentation style.
-- Reuses the reference visual system, including cover, closing slide, header, rules, type hierarchy, and blue theme.
+- Reuses different template/example styles, including cover, closing slide, header, rules, type hierarchy, palette, tables, and formula regions.
 - Builds a complete report structure: background, technical points, method, formulas, experiments, limitations, and summary.
 - Uses editable PowerPoint-native text, tables, shapes, and formula-like text instead of slide screenshots.
 - Checks figure crops, aspect ratios, text-image spacing, blank areas, overlap, meaningless line breaks, font hierarchy drift, empty text bodies, and AI-sounding wording.
 - Sanitizes PPTX examples and generated outputs before publishing by removing personal information, notes, comments, and document metadata.
 - Provides validated scaffold scripts and example decks for reuse.
+
+### Current Progress
+
+- Collected 4 public AI-generated example PPTX decks covering trajectory planning, RL navigation, multi-quadrotor CBF planning, and multi-UAV coverage path planning.
+- Built reusable `python-pptx` scaffolds for covers, closing slides, bullet hierarchy, formula rows, native tables, process diagrams, figure crops, and metric rows.
+- Established a multi-template workflow: inspect the user template or example deck first, then generate a new paper report following its visual rhythm.
+- Added strict PPTX auditing for empty text bodies, manual body newlines, abnormal paragraph spacing, long formula rows in narrow boxes, content overlap, font hierarchy drift, and out-of-bounds shapes.
+- Added privacy sanitization for PPTX metadata, notes, comments, and visible personal information before public release.
+
+### Roadmap
+
+- Add template extraction scripts for cover style, header rhythm, font hierarchy, palette, table style, and common layout families.
+- Add content-density controls so background, method, experiment, and conclusion sections can be expanded or compressed.
+- Improve formula generation with more standard PowerPoint-native equations or more stable editable formula components.
+- Add stronger figure-crop QA for aspect ratio errors, truncated subfigures, caption-heavy crops, and text-image collisions.
+- Add more domain templates for SLAM, control, path planning, robot learning, and multi-agent systems.
+- Package a fuller CLI workflow: input PDF, template PPTX, and config file; output PPTX, PDF, PNG previews, and QA report.
 
 ### Installation
 

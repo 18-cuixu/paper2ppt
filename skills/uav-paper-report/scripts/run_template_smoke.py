@@ -24,6 +24,7 @@ import run_template_matrix as matrix_runner
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PAPERS = ROOT / "assets" / "template-profiles" / "stress-papers.json"
 DEFAULT_TEMPLATES = ROOT / "assets" / "template-profiles" / "template-smoke.local.example.json"
+DEFAULT_REQUIREMENTS = ROOT / "assets" / "template-profiles" / "requirement-smoke.json"
 AUDIT = ROOT / "scripts" / "audit_pptx_text.py"
 RENDER = ROOT / "scripts" / "render_pptx_previews.py"
 SCAN = ROOT / "scripts" / "scan_rendered_slides.py"
@@ -79,12 +80,21 @@ THEMES = {
     "dark": RGBColor(25, 41, 58),
 }
 
+DEFAULT_REQUIREMENT = {
+    "id": "balanced",
+    "description": "Balanced paper report with normal method and experiment density.",
+    "mode": "balanced",
+}
 
-def expand_path(raw: str, *, template_root: Path | None) -> Path:
+
+def expand_path(raw: str, *, template_root: Path | None, base_dir: Path | None = None) -> Path:
     text = os.path.expandvars(raw)
     if template_root is not None:
         text = text.replace("${PPTAGENT_TEMPLATE_ROOT}", str(template_root))
-    return Path(text).expanduser().resolve()
+    path = Path(text).expanduser()
+    if not path.is_absolute() and base_dir is not None:
+        path = base_dir / path
+    return path.resolve()
 
 
 def rgb_tuple(color: RGBColor) -> tuple[int, int, int]:
@@ -198,6 +208,112 @@ def clean_formula_text(text: str) -> str:
     if not cleaned.strip():
         raise ValueError("empty formula run is not allowed")
     return cleaned
+
+
+def requirement_mode(requirement: dict[str, Any] | None) -> str:
+    if not requirement:
+        return "balanced"
+    return str(requirement.get("mode") or requirement.get("id") or "balanced")
+
+
+def requirement_id(requirement: dict[str, Any] | None) -> str:
+    if not requirement:
+        return "balanced"
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", str(requirement.get("id") or "balanced")).strip("-") or "balanced"
+
+
+def bullet_limit(lines: list[str], count: int) -> list[str]:
+    return lines[: max(0, min(count, len(lines)))]
+
+
+def detail_lines(paper: dict[str, Any], key: str, *, mode: str, default: int) -> list[str]:
+    lines = list(paper.get(key, []))
+    if mode in {"brief", "executive-brief"}:
+        return bullet_limit(lines, max(1, default - 1))
+    if mode in {"method-detailed", "formula-heavy"} and key.startswith(("method_", "formula_", "tall_figure")):
+        return bullet_limit(lines, default + 1)
+    if mode in {"experiment-detailed", "evidence-heavy"} and key.startswith(("evidence_", "summary_")):
+        return bullet_limit(lines, default + 1)
+    return bullet_limit(lines, default)
+
+
+def base_bullets(paper: dict[str, Any], *, mode: str, default: int) -> list[str]:
+    lines = list(paper.get("bullets", []))
+    if mode in {"brief", "executive-brief"}:
+        return bullet_limit(lines, max(1, default - 1))
+    if mode in {"method-detailed", "formula-heavy"}:
+        return bullet_limit(lines, default + 1)
+    return bullet_limit(lines, default)
+
+
+def formula_note_lines(paper: dict[str, Any], *, mode: str, narrow: bool) -> list[str]:
+    if narrow:
+        lines = list(paper.get("formula_notes_narrow", []))
+        if mode in {"method-detailed", "formula-heavy"}:
+            lines += list(paper.get("formula_notes_wide", []))[1:2]
+        return bullet_limit(lines, 2 if mode in {"method-detailed", "formula-heavy"} else 1)
+    lines = list(paper.get("formula_notes_wide", []))
+    if mode in {"brief", "executive-brief"}:
+        return bullet_limit(lines, 1)
+    return bullet_limit(lines, 3 if mode in {"method-detailed", "formula-heavy"} else 2)
+
+
+def summary_lines_for(paper: dict[str, Any], *, mode: str) -> list[str]:
+    lines = [
+        "鈼?" + paper["main_claim"],
+        "鈥?" + paper["summary_method"],
+    ]
+    if mode != "brief":
+        lines.append("鈥?" + paper["summary_result"])
+    extra_default = 1 if mode == "brief" else 2
+    if mode in {"method-detailed", "formula-heavy", "experiment-detailed", "evidence-heavy"}:
+        extra_default = 3
+    lines.extend(bullet_limit(list(paper.get("summary_extra", [])), extra_default))
+    return lines
+
+
+def apply_requirement(paper: dict[str, Any], requirement: dict[str, Any] | None) -> dict[str, Any]:
+    mode = requirement_mode(requirement)
+    req_id = requirement_id(requirement)
+    variant = json.loads(json.dumps(paper))
+    variant["base_id"] = paper["id"]
+    variant["requirement_id"] = req_id
+    variant["id"] = f"{paper['id']}-{req_id}"
+
+    if mode in {"brief", "executive-brief"}:
+        variant["bullets"] = bullet_limit(variant.get("bullets", []), 1)
+        for key in (
+            "position_notes",
+            "method_notes_narrow",
+            "method_notes_wide",
+            "method_bottom_notes",
+            "formula_notes_narrow",
+            "formula_notes_wide",
+            "evidence_notes_narrow",
+            "evidence_notes_wide",
+            "tall_figure_bottom_notes",
+            "summary_extra",
+            "summary_bridge",
+        ):
+            variant[key] = bullet_limit(variant.get(key, []), 1)
+        variant["tall_figure_notes_narrow"] = bullet_limit(variant.get("tall_figure_notes_narrow", []), 2)
+        variant["tall_figure_notes_wide"] = bullet_limit(variant.get("tall_figure_notes_wide", []), 2)
+    elif mode in {"method-detailed", "formula-heavy"}:
+        variant["bullets"] = bullet_limit(variant.get("bullets", []), 3)
+        variant["method_notes_wide"] = bullet_limit(variant.get("method_notes_wide", []), 1)
+        variant["formula_notes_wide"] = bullet_limit(variant.get("formula_notes_wide", []), 2)
+        variant["tall_figure_notes_wide"] = bullet_limit(
+            variant.get("tall_figure_notes_wide", []) + variant.get("tall_figure_bottom_notes", []),
+            3,
+        )
+    elif mode in {"experiment-detailed", "evidence-heavy"}:
+        variant["evidence_notes_wide"] = bullet_limit(
+            variant.get("evidence_notes_wide", []) + variant.get("position_notes", []),
+            3,
+        )
+        variant["summary_extra"] = bullet_limit(variant.get("summary_extra", []), 2)
+        variant["summary_bridge"] = bullet_limit(variant.get("summary_bridge", []), 1)
+    return variant
 
 
 def add_plain(slide, text: str, left: float, top: float, width: float, height: float, size: float, *,
@@ -696,6 +812,7 @@ def cover_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, temp
 def content_position(prs: Presentation, paper: dict[str, Any], accent: RGBColor, sizes: dict[str, float]) -> None:
     w = prs.slide_width / EMU_PER_INCH
     h = prs.slide_height / EMU_PER_INCH
+    is_brief = paper.get("requirement_id") in {"brief", "executive-brief"}
     slide = add_blank_slide(prs)
     add_header(slide, w, h, accent, "Part. 01", "论文定位")
     add_section(slide, w, 0.78, "1.1", "研究问题与核心思路", accent)
@@ -712,6 +829,12 @@ def content_position(prs: Presentation, paper: dict[str, Any], accent: RGBColor,
         table_y = rule_y + 0.24
         metric_y = table_y + 1.22
         note_y = metric_y + 0.82
+        if is_brief:
+            body_h = 1.68
+            rule_y = 3.08
+            table_y = 3.32
+            metric_y = table_y + 1.18
+            note_y = metric_y + 0.76
         # Keep this stress slide strictly top-to-bottom. The older side-rail
         # version created narrow paragraphs and made wrapped lines look like
         # manual blank lines after LibreOffice export.
@@ -901,8 +1024,8 @@ def thanks_slide(prs: Presentation, accent: RGBColor, template_id: str) -> None:
     add_plain(slide, "学术论文汇报", w * 0.36, h - 0.72, w * 0.28, 0.24, 12.0, name="THANKS_FOOTER", color=accent, align=PP_ALIGN.CENTER)
 
 
-def build_deck(template: dict[str, Any], paper: dict[str, Any], out_dir: Path, *, template_root: Path | None) -> tuple[Path, str]:
-    template_path = expand_path(template["path"], template_root=template_root)
+def build_deck(template: dict[str, Any], paper: dict[str, Any], out_dir: Path, *, template_root: Path | None, template_base_dir: Path | None = None) -> tuple[Path, str]:
+    template_path = expand_path(template["path"], template_root=template_root, base_dir=template_base_dir)
     if not template_path.exists():
         raise FileNotFoundError(template_path)
     template_id = template["id"]
@@ -975,7 +1098,7 @@ def load_templates(path: Path, *, template_root: Path | None) -> list[dict[str, 
     resolved = []
     for template in templates:
         try:
-            template_path = expand_path(template["path"], template_root=template_root)
+            template_path = expand_path(template["path"], template_root=template_root, base_dir=path.parent)
         except Exception:
             continue
         if template_path.exists():
@@ -985,13 +1108,52 @@ def load_templates(path: Path, *, template_root: Path | None) -> list[dict[str, 
     return resolved
 
 
+def load_requirements(path: Path | None, *, limit: int = 0) -> list[dict[str, Any]]:
+    if path is None:
+        requirements = [DEFAULT_REQUIREMENT]
+    else:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        requirements = data.get("requirements", [])
+    if not requirements:
+        requirements = [DEFAULT_REQUIREMENT]
+    if limit:
+        requirements = requirements[:limit]
+    return requirements
+
+
+def filter_by_ids(items: list[dict[str, Any]], values: list[str], *, label: str) -> list[dict[str, Any]]:
+    if not values:
+        return items
+    wanted: set[str] = set()
+    for value in values:
+        wanted.update(part.strip() for part in value.split(",") if part.strip())
+    if not wanted:
+        return items
+
+    def item_id(item: dict[str, Any]) -> str:
+        if label == "requirement":
+            return requirement_id(item)
+        return str(item.get("id", ""))
+
+    filtered = [item for item in items if item_id(item) in wanted]
+    missing = sorted(wanted - {item_id(item) for item in filtered})
+    if missing:
+        print(f"warning: {label} filter did not match: {', '.join(missing)}")
+    return filtered
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate small paper-report decks across local PPTX templates.")
     parser.add_argument("--papers", type=Path, default=DEFAULT_PAPERS)
     parser.add_argument("--templates", type=Path, default=DEFAULT_TEMPLATES)
+    parser.add_argument("--requirements", type=Path, nargs="?", const=DEFAULT_REQUIREMENTS, help="Optional density/section-focus smoke requirements JSON.")
     parser.add_argument("--template-root", type=Path, help="Root containing PPTAgent-style template subfolders.")
     parser.add_argument("--out-dir", type=Path, default=ROOT / "out" / "template-smoke")
+    parser.add_argument("--template-id", action="append", default=[], help="Run only matching template id(s), comma-separated or repeated.")
+    parser.add_argument("--paper-id", action="append", default=[], help="Run only matching paper id(s), comma-separated or repeated.")
+    parser.add_argument("--requirement-id", action="append", default=[], help="Run only matching requirement id(s), comma-separated or repeated.")
     parser.add_argument("--case-limit", type=int, default=0, help="Limit generated cases for quick debugging.")
+    parser.add_argument("--requirement-limit", type=int, default=0, help="Limit requirement variants for quick debugging.")
     parser.add_argument("--skip-render", action="store_true")
     parser.add_argument("--keep-going", action="store_true")
     parser.add_argument("--export-timeout", type=int, default=90)
@@ -999,6 +1161,10 @@ def main() -> int:
 
     papers = json.loads(args.papers.read_text(encoding="utf-8")).get("papers", [])
     templates = load_templates(args.templates, template_root=args.template_root)
+    requirements = load_requirements(args.requirements, limit=args.requirement_limit)
+    papers = filter_by_ids(papers, args.paper_id, label="paper")
+    templates = filter_by_ids(templates, args.template_id, label="template")
+    requirements = filter_by_ids(requirements, args.requirement_id, label="requirement")
     if not papers:
         print("no stress papers configured", file=sys.stderr)
         return 2
@@ -1012,40 +1178,54 @@ def main() -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     for template in templates:
         for paper in papers:
-            if args.case_limit and count >= args.case_limit:
-                break
-            count += 1
-            case_id = f"{template['id']}-{paper['id']}"
-            print(f"\n== smoke {case_id} ==", flush=True)
-            try:
-                pptx, profile = build_deck(template, paper, args.out_dir, template_root=args.template_root)
-            except Exception as exc:
-                print(f"build failed: {exc}")
-                failures.append(f"{case_id}: build failed")
-                if not args.keep_going:
+            for requirement in requirements:
+                if args.case_limit and count >= args.case_limit:
                     break
-                continue
-            proc = run([
-                py,
-                str(AUDIT),
-                str(pptx),
-                "--strict-body-hierarchy",
-                "--profile",
-                profile,
-                "--fail-on-warning",
-            ], timeout=60)
-            print(proc.stdout)
-            if proc.returncode != 0:
-                failures.append(f"{case_id}: PPTX audit failed")
-                if not args.keep_going:
-                    break
-                continue
-            if not args.skip_render:
-                rc = render_case(pptx, pptx.parent, timeout=args.export_timeout)
-                if rc != 0:
-                    failures.append(f"{case_id}: render/scan failed")
+                active_paper = apply_requirement(paper, requirement)
+                req_id = requirement_id(requirement)
+                count += 1
+                case_id = f"{template['id']}-{paper['id']}-{req_id}"
+                print(f"\n== smoke {case_id} ==", flush=True)
+                print(f"requirement: {requirement.get('description', req_id)}", flush=True)
+                try:
+                    pptx, profile = build_deck(
+                        template,
+                        active_paper,
+                        args.out_dir,
+                        template_root=args.template_root,
+                        template_base_dir=args.templates.parent,
+                    )
+                except Exception as exc:
+                    print(f"build failed: {exc}")
+                    failures.append(f"{case_id}: build failed")
                     if not args.keep_going:
                         break
+                    continue
+                proc = run([
+                    py,
+                    str(AUDIT),
+                    str(pptx),
+                    "--strict-body-hierarchy",
+                    "--profile",
+                    profile,
+                    "--fail-on-warning",
+                ], timeout=60)
+                print(proc.stdout)
+                if proc.returncode != 0:
+                    failures.append(f"{case_id}: PPTX audit failed")
+                    if not args.keep_going:
+                        break
+                    continue
+                if not args.skip_render:
+                    rc = render_case(pptx, pptx.parent, timeout=args.export_timeout)
+                    if rc != 0:
+                        failures.append(f"{case_id}: render/scan failed")
+                        if not args.keep_going:
+                            break
+            if args.case_limit and count >= args.case_limit:
+                break
+            if failures and not args.keep_going:
+                break
         if args.case_limit and count >= args.case_limit:
             break
         if failures and not args.keep_going:

@@ -1,0 +1,28 @@
+{
+  "templates": [
+    {
+      "id": "public-classic-blue",
+      "path": "../examples/uav-paper-report-v60.pptx",
+      "audit_profile": "classic-large",
+      "theme": "blue"
+    },
+    {
+      "id": "public-dense-blue",
+      "path": "../examples/uav-multi-quad-cbf-report.pptx",
+      "audit_profile": "dense-visual",
+      "theme": "blue"
+    },
+    {
+      "id": "public-dark-cyan",
+      "path": "../examples/quad-lcd-dark-template-report.pptx",
+      "audit_profile": "dense-visual",
+      "theme": "cyan"
+    },
+    {
+      "id": "public-repaired-classic",
+      "path": "../examples/uav-primer-regression-report.pptx",
+      "audit_profile": "classic-large",
+      "theme": "blue"
+    }
+  ]
+}

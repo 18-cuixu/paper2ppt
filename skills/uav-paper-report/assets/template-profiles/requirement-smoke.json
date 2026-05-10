@@ -1,0 +1,24 @@
+{
+  "requirements": [
+    {
+      "id": "balanced",
+      "mode": "balanced",
+      "description": "Normal group-meeting density: balanced background, method, formulas, experiments, and summary."
+    },
+    {
+      "id": "brief",
+      "mode": "brief",
+      "description": "Shorter report request: fewer bullets, compact method explanation, and concise conclusion."
+    },
+    {
+      "id": "method-detailed",
+      "mode": "method-detailed",
+      "description": "Method-heavy request: keep formulas and method interpretation fuller while preserving layout constraints."
+    },
+    {
+      "id": "experiment-detailed",
+      "mode": "experiment-detailed",
+      "description": "Experiment-heavy request: expand evidence interpretation and result summary without shrinking fonts."
+    }
+  ]
+}

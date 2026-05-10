@@ -169,10 +169,30 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 - `render_pptx_previews.py`: 把导出的 PDF 渲染为逐页 PNG 和预览图。
 - `repair_pptx_layout.py`: 发布前清理空文本体、统一部分字号漂移、移除正文里的手动换行。
 - `run_template_matrix.py`: 对公开示例做多论文、多模板回归检查。
-- `run_template_smoke.py`: 用本地模板批量生成压力测试页，检查模板泛化能力。
+- `run_template_smoke.py`: 用本地模板批量生成压力测试页，检查模板泛化能力；也可以配合 `requirement-smoke.json` 测试简略、均衡、方法详细、实验详细等不同要求。
 - `sanitize_pptx_privacy.py`: 清理 PPTX 元数据、备注、批注、自定义属性和可见个人信息。
 
 这些脚本不是为了把 PPT 自动改到完美，而是帮助 Codex 更快发现明显问题。最终仍然需要查看渲染后的页面。
+
+多模板和多要求 smoke 测试示例：
+
+```powershell
+python .\skills\uav-paper-report\scripts\run_template_smoke.py `
+  --templates .\skills\uav-paper-report\assets\template-profiles\public-template-smoke.json `
+  --requirements .\skills\uav-paper-report\assets\template-profiles\requirement-smoke.json `
+  --keep-going
+```
+
+如果某个组合失败，可以只重跑相关模板、论文和要求：
+
+```powershell
+python .\skills\uav-paper-report\scripts\run_template_smoke.py `
+  --templates .\skills\uav-paper-report\assets\template-profiles\public-template-smoke.json `
+  --requirements .\skills\uav-paper-report\assets\template-profiles\requirement-smoke.json `
+  --template-id public-dark-cyan `
+  --paper-id downfacing-vio-2025 `
+  --requirement-id method-detailed
+```
 
 ### 仓库内容
 
@@ -201,11 +221,13 @@ paper2ppt/
 - `skills/uav-paper-report/assets/examples/`: 已清理的 AI 生成示例 PPT。
 - `skills/uav-paper-report/assets/scaffolds/`: 可复用的 `python-pptx` 生成脚本。
 - `skills/uav-paper-report/assets/screenshots/`: README 中使用的效果截图。
-- `skills/uav-paper-report/assets/template-profiles/`: 多模板测试和压力测试配置。
+- `skills/uav-paper-report/assets/template-profiles/`: 多模板测试、压力测试和不同详细度要求配置。
 
 ### 当前状态
 
 目前仓库已经整理了 8 个公开 AI 生成示例 PPTX，覆盖轨迹规划、强化学习导航、多机 CBF 规划、覆盖路径规划、FoV-CBF、PRIMER、SPOT 等方向。示例和脚本已经围绕这些常见问题做了多轮修正：
+
+当前 smoke 测试覆盖公开模板配置、最近无人机论文内容和 4 类要求：`balanced`、`brief`、`method-detailed`、`experiment-detailed`。最近一轮验证中，全量 build-only 矩阵覆盖 192 个组合；代表性真实渲染抽测覆盖 26 个组合，并检查了 PPTX 审计、LibreOffice 导出、PNG 渲染和渲染后空白扫描。
 
 - 文字和图片重叠
 - 正文字号不统一
@@ -404,10 +426,30 @@ The repository includes scripts for recurring checks:
 - `render_pptx_previews.py`: renders exported PDFs into slide PNGs and preview grids.
 - `repair_pptx_layout.py`: cleans empty text bodies, some font drift, and body newlines before publishing.
 - `run_template_matrix.py`: runs public multi-paper, multi-template regression checks.
-- `run_template_smoke.py`: generates stress decks across local PPTX templates to test generalization.
+- `run_template_smoke.py`: generates stress decks across local PPTX templates to test generalization; with `requirement-smoke.json`, it also tests brief, balanced, method-detailed, and experiment-detailed requests.
 - `sanitize_pptx_privacy.py`: removes personal metadata, notes, comments, custom properties, and visible private information.
 
 These scripts are quality helpers. The final deck still needs visual inspection after rendering.
+
+Example multi-template and multi-requirement smoke test:
+
+```powershell
+python .\skills\uav-paper-report\scripts\run_template_smoke.py `
+  --templates .\skills\uav-paper-report\assets\template-profiles\public-template-smoke.json `
+  --requirements .\skills\uav-paper-report\assets\template-profiles\requirement-smoke.json `
+  --keep-going
+```
+
+When a specific combination fails, rerun only that template, paper, and requirement:
+
+```powershell
+python .\skills\uav-paper-report\scripts\run_template_smoke.py `
+  --templates .\skills\uav-paper-report\assets\template-profiles\public-template-smoke.json `
+  --requirements .\skills\uav-paper-report\assets\template-profiles\requirement-smoke.json `
+  --template-id public-dark-cyan `
+  --paper-id downfacing-vio-2025 `
+  --requirement-id method-detailed
+```
 
 ### Repository Layout
 
@@ -436,11 +478,13 @@ Key paths:
 - `skills/uav-paper-report/assets/examples/`: sanitized AI-generated example PPT decks.
 - `skills/uav-paper-report/assets/scaffolds/`: reusable `python-pptx` generation scripts.
 - `skills/uav-paper-report/assets/screenshots/`: screenshots used in this README.
-- `skills/uav-paper-report/assets/template-profiles/`: multi-template test configuration.
+- `skills/uav-paper-report/assets/template-profiles/`: multi-template, stress-test, and requirement-variant configuration.
 
 ### Current Status
 
 The repository currently includes 8 public AI-generated example PPTX decks covering trajectory planning, RL navigation, multi-quadrotor CBF planning, coverage path planning, FoV-CBF, PRIMER, SPOT, and related UAV/autonomy topics.
+
+The current smoke workflow covers public template profiles, recent UAV paper content, and four requirement modes: `balanced`, `brief`, `method-detailed`, and `experiment-detailed`. In the latest validation pass, the build-only matrix covered 192 combinations; representative rendered QA covered 26 combinations with PPTX audit, LibreOffice export, PNG rendering, and rendered-slide blank-area scanning.
 
 The examples and scripts have been iterated around issues that repeatedly appeared in real use:
 

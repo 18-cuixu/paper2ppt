@@ -282,8 +282,8 @@ def apply_requirement(paper: dict[str, Any], requirement: dict[str, Any] | None)
 
     if mode in {"brief", "executive-brief"}:
         variant["bullets"] = bullet_limit(variant.get("bullets", []), 1)
+        variant["position_notes"] = bullet_limit(variant.get("position_notes", []), 2)
         for key in (
-            "position_notes",
             "method_notes_narrow",
             "method_notes_wide",
             "method_bottom_notes",
@@ -666,9 +666,9 @@ def add_table(
 
 FORMULA_SPECS: dict[str, list[list[str | tuple[str, str]]]] = {
     "primitive-planner-2025": [
-        ["p(t) = p", ("0", "sub"), " + v", ("0", "sub"), "t + 1/2 a t", ("2", "sup")],
+        ["p(t) = p", ("0", "sub"), " + v", ("0", "sub"), " t + 1/2 a t", ("2", "sup")],
         ["J(π) = T(π) + λ", ("c", "sub"), " C(π) + λ", ("s", "sub"), " S(π)"],
-        ["π", ("*", "sup"), " = arg min", ("π∈Pₛ", "sub"), " J(π)"],
+        ["π", ("*", "sup"), " = arg min J(π),   π ∈ P", ("s", "sub")],
     ],
     "safety-assurance-2025": [
         ["u", ("s", "sub"), " = arg min", ("u", "sub"), " ||u - u", ("n", "sub"), "||", ("2", "sup")],
@@ -729,7 +729,49 @@ FORMULA_SPECS: dict[str, list[list[str | tuple[str, str]]]] = {
 
 
 def formula_rows_for(paper: dict[str, Any]) -> list[list[str | tuple[str, str]]]:
-    return FORMULA_SPECS.get(paper["id"], [[row] for row in paper["formula_rows"]])
+    paper_id = paper.get("base_id") or paper["id"]
+    return FORMULA_SPECS.get(paper_id, [[row] for row in paper["formula_rows"]])
+
+
+FORMULA_NOTE_EXTRAS: dict[str, list[str]] = {
+    "mc-swarm-2025": [
+        "• 模式控制项给出协同行为，安全梯度项在输入层修正碰撞风险。"
+    ],
+}
+
+FORMULA_ENTRY_ROWS: dict[str, list[list[str]]] = {
+    "mc-swarm-2025": [
+        ["对象", "进入方式"],
+        ["模式", "任务评分"],
+        ["距离", "安全约束"],
+        ["控制", "模式输出"],
+        ["修正", "安全梯度"],
+    ],
+}
+
+
+def paper_base_id(paper: dict[str, Any]) -> str:
+    return str(paper.get("base_id") or paper["id"])
+
+
+def formula_notes_for_slide(paper: dict[str, Any]) -> list[str]:
+    notes = list(paper["formula_notes_wide"])
+    for line in FORMULA_NOTE_EXTRAS.get(paper_base_id(paper), []):
+        if line not in notes:
+            notes.append(line)
+    if paper.get("requirement_id") in {"brief", "executive-brief"}:
+        for line in paper.get("formula_notes_narrow", []):
+            if line not in notes:
+                notes.append(line)
+                break
+    return notes
+
+
+def formula_entry_rows_for(paper: dict[str, Any]) -> list[list[str]]:
+    return FORMULA_ENTRY_ROWS.get(
+        paper_base_id(paper),
+        [["对象", "进入方式"], ["目标", "代价函数"], ["约束", "可行集合"], ["输出", "控制/轨迹"]],
+    )
 
 
 def add_formula_rows(slide, rows: list[list[str | tuple[str, str]]], left: float, top: float, width: float, row_h: float, size: float, accent: RGBColor) -> None:
@@ -829,12 +871,20 @@ def content_position(prs: Presentation, paper: dict[str, Any], accent: RGBColor,
         table_y = rule_y + 0.24
         metric_y = table_y + 1.22
         note_y = metric_y + 0.82
-        if is_brief:
-            body_h = 1.68
-            rule_y = 3.08
-            table_y = 3.32
+        if not compact_profile:
+            rule_y = 3.30
+            table_y = 3.52
             metric_y = table_y + 1.18
             note_y = metric_y + 0.76
+        if is_brief:
+            # Brief decks still need enough render slack for mixed Chinese/English
+            # bullets, but the visible rule/table band should still sit close to
+            # the rendered text so the slide does not develop a blank middle band.
+            body_h = 1.62 if compact_profile else 1.72
+            rule_y = 2.98 if compact_profile else 3.08
+            table_y = rule_y + 0.22
+            metric_y = table_y + 1.18
+            note_y = metric_y + 0.74
         # Keep this stress slide strictly top-to-bottom. The older side-rail
         # version created narrow paragraphs and made wrapped lines look like
         # manual blank lines after LibreOffice export.
@@ -922,6 +972,7 @@ def formula_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, si
     add_header(slide, w, h, accent, "Part. 02", "研究方法")
     add_section(slide, w, 0.78, "2.2", "约束与目标函数", accent)
     formula_rows = formula_rows_for(paper)
+    formula_notes = formula_notes_for_slide(paper)
     if w < 11.0:
         add_formula_rows(slide, formula_rows, 0.74, 1.38, w - 1.45, 0.58, sizes["formula"], accent)
         rows = [["符号", "含义"]] + paper["terms"][:4]
@@ -932,8 +983,10 @@ def formula_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, si
         rows = [["符号", "含义"]] + paper["terms"][:4]
         add_table(slide, rows, w * 0.61, 1.42, w * 0.33, 2.50, sizes["table"], accent, col_widths=[0.28, 0.72])
         add_rule(slide, 0.86, 4.10, w - 1.72, accent)
-        add_bullets(slide, paper["formula_notes_wide"], 0.86, 4.32, w * 0.52, 1.36, sizes, name="BODY_FORMULA_EXPLAIN", space_after=0.16)
-        add_table(slide, [["对象", "进入方式"], ["目标", "代价函数"], ["约束", "可行集合"], ["输出", "控制/轨迹"]], w * 0.61, 4.28, w * 0.33, 1.30, sizes["table"], accent, col_widths=[0.38, 0.62])
+        add_bullets(slide, formula_notes, 0.86, 4.32, w * 0.52, 1.36, sizes, name="BODY_FORMULA_EXPLAIN", space_after=0.16)
+        entry_rows = formula_entry_rows_for(paper)
+        entry_h = 1.42 if len(entry_rows) > 4 else 1.30
+        add_table(slide, entry_rows, w * 0.61, 4.28, w * 0.33, entry_h, sizes["table"], accent, col_widths=[0.38, 0.62])
         metric_row(slide, [["目标", "优化量"], ["约束", "安全集"], ["动力学", "状态传播"]], 0.98, 5.86, w - 1.96, accent, sizes["metric_value"], label_size=sizes["metric_label"])
 
 
@@ -956,9 +1009,9 @@ def evidence_slide(prs: Presentation, paper: dict[str, Any], assets: dict[str, P
     else:
         fit_picture(slide, assets["wide"], 0.74, 1.34, w * 0.53, 2.76, name="FIG_TRAJECTORY")
         add_bullets(slide, paper["evidence_notes_wide"], w * 0.61, 1.44, w * 0.33, 2.36, sizes, name="BODY_EVIDENCE", space_after=0.28)
-        add_rule(slide, 0.74, 4.30, w - 1.48, accent)
-        add_table(slide, rows, 0.80, 4.54, w - 1.60, 1.22, sizes["table"], accent)
-        metric_row(slide, [["轨迹", "候选收敛"], ["对比", "性能差异"], ["结论", "可执行性"]], 0.94, 6.04, w - 1.88, accent, sizes["metric_value"], label_size=sizes["metric_label"])
+        add_rule(slide, 0.74, 4.06, w - 1.48, accent)
+        add_table(slide, rows, 0.80, 4.26, w - 1.60, 1.22, sizes["table"], accent)
+        metric_row(slide, [["轨迹", "候选收敛"], ["对比", "性能差异"], ["结论", "可执行性"]], 0.94, 5.78, w - 1.88, accent, sizes["metric_value"], label_size=sizes["metric_label"])
 
 
 def narrow_figure_slide(prs: Presentation, paper: dict[str, Any], assets: dict[str, Path], accent: RGBColor, sizes: dict[str, float]) -> None:
@@ -982,33 +1035,40 @@ def narrow_figure_slide(prs: Presentation, paper: dict[str, Any], assets: dict[s
 def summary_slide(prs: Presentation, paper: dict[str, Any], accent: RGBColor, sizes: dict[str, float]) -> None:
     w = prs.slide_width / EMU_PER_INCH
     h = prs.slide_height / EMU_PER_INCH
+    is_brief = paper.get("requirement_id") in {"brief", "executive-brief"}
     slide = add_blank_slide(prs)
     add_header(slide, w, h, accent, "Part. 04", "总结")
     add_section(slide, w, 0.78, "4.1", "报告结论", accent)
     summary_lines = [
         "● " + paper["main_claim"],
         "• " + paper["summary_method"],
-        "• " + paper["summary_result"],
-        "• 方法边界主要来自约束建模、候选覆盖范围和真实执行误差。",
     ]
+    if not is_brief:
+        summary_lines.append("• " + paper["summary_result"])
+    summary_lines.append("• 方法边界主要来自约束建模、候选覆盖范围和真实执行误差。")
     summary_lines.extend(paper["summary_extra"])
-    add_bullets(slide, summary_lines, 0.76, 1.48, w - 1.52, 3.18 if w < 11.0 else 2.42, sizes, name="BODY_SUMMARY", space_after=0.48 if w < 11.0 else 1.8)
+    summary_h = 3.18 if w < 11.0 else (1.86 if is_brief else 2.42)
+    summary_space = 0.48 if w < 11.0 else (0.46 if is_brief else 1.8)
+    add_bullets(slide, summary_lines, 0.76, 1.48, w - 1.52, summary_h, sizes, name="BODY_SUMMARY", space_after=summary_space)
     if w < 11.0:
         add_table(slide, [["对象", "约束"], ["轨迹", "连续性"], ["控制", "输入边界"], ["实验", "可执行性"]], 0.88, 3.64, w - 1.76, 1.05, sizes["table"], accent, col_widths=[0.35, 0.65])
         metric_row(slide, [["问题", "规划约束"], ["方法", "在线选择"], ["结果", "飞行验证"]], 0.88, h - 1.84, w - 1.76, accent, sizes["metric_value"], label_size=sizes["metric_label"])
     else:
+        table_y = 3.10 if is_brief else 3.50
+        bridge_y = 4.60 if is_brief else 5.10
+        metric_y = 5.34 if is_brief else 5.92
         add_table(
             slide,
             paper["summary_rows"],
             0.88,
-            3.50,
+            table_y,
             w - 1.76,
             1.34,
             sizes["table"],
             accent,
         )
-        add_bullets(slide, paper["summary_bridge"], 0.96, 5.10, w - 1.92, 0.54, sizes, name="BODY_SUMMARY_BRIDGE", space_after=0.0)
-        metric_row(slide, [["问题", "任务约束"], ["方法", "闭环求解"], ["结果", "实验证据"]], 0.88, 5.92, w - 1.76, accent, sizes["metric_value"], label_size=sizes["metric_label"])
+        add_bullets(slide, paper["summary_bridge"], 0.96, bridge_y, w - 1.92, 0.54, sizes, name="BODY_SUMMARY_BRIDGE", space_after=0.0)
+        metric_row(slide, [["问题", "任务约束"], ["方法", "闭环求解"], ["结果", "实验证据"]], 0.88, metric_y, w - 1.76, accent, sizes["metric_value"], label_size=sizes["metric_label"])
 
 
 def thanks_slide(prs: Presentation, accent: RGBColor, template_id: str) -> None:

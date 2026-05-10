@@ -75,6 +75,17 @@ BODY_LINE_BREAK = re.compile(r"[^\n]\n[^\n]")
 CODE_STYLE_MATH = re.compile(
     r"(?:[A-Za-zΑ-Ωα-ωϕϑϖϱ][A-Za-z0-9Α-Ωα-ωϕϑϖϱ]*|[πλΔηψθγℓϕ])_(?:\{[^}\s]+\}|[A-Za-z0-9Α-Ωα-ωϕϑϖϱ]+)"
 )
+RAW_FORMULA_SUPERSCRIPT = re.compile(r"\^")
+RAW_FORMULA_SUFFIX = re.compile(
+    r"(?<![A-Za-zΑ-Ωα-ωϕϑϖϱ])"
+    r"(?:"
+    r"(?:GSD|[A-Za-zπλΔηψθγℓϕ])\d+[A-Za-z]?"
+    r"|λ[A-Za-z]{1,3}"
+    r"|(?:T|R|P|L|E|J|f|u|v|p|x|z|r|d)"
+    r"(?:min|max|ref|cw|sat|smooth|track|safe|path|imu|event|stereo|map|obs|comm)"
+    r")"
+    r"(?![A-Za-zΑ-Ωα-ωϕϑϖϱ])"
+)
 BODY_MARKERS = ("●", "•", "–", "-")
 BULLET_LEVELS = {
     "●": "main",
@@ -476,6 +487,19 @@ def run_sizes(paragraph) -> list[float]:
     return sizes
 
 
+def normal_formula_run_texts(paragraph) -> list[str]:
+    texts = []
+    for run in paragraph.findall("./a:r", NS):
+        rpr = run.find("./a:rPr", NS)
+        baseline = rpr.get("baseline") if rpr is not None else None
+        if baseline not in (None, "0"):
+            continue
+        text = "".join(node.text or "" for node in run.findall("./a:t", NS)).strip()
+        if text:
+            texts.append(text)
+    return texts
+
+
 def shape_text_role(shape_name: str) -> str | None:
     if shape_name.startswith("METRIC_VALUE_"):
         return "metric_value"
@@ -820,7 +844,9 @@ def main() -> int:
                 fill_ratio = estimated_height / max(height_in, 0.01)
                 text_overflow_boxes[(slide_no, shape_name)] = (
                     estimated_height,
-                    (left, top, left + width_in, max(top + height_in, top + estimated_height)),
+                    # Collision checks should use the estimated rendered footprint,
+                    # not the empty slack inside a deliberately taller text box.
+                    (left, top, left + width_in, top + estimated_height),
                 )
                 if fill_ratio > args.max_text_height_fill:
                     warnings.append(
@@ -874,6 +900,16 @@ def main() -> int:
                     stripped = text.strip()
                     if not stripped or width_in is None or not shape_name.startswith("MATH_BODY"):
                         continue
+                    for run_text in normal_formula_run_texts(paragraph):
+                        if RAW_FORMULA_SUPERSCRIPT.search(run_text):
+                            warnings.append(
+                                f"{prefix} slide {slide_no:02d}: raw caret exponent in `{shape_name}`"
+                            )
+                        for match in RAW_FORMULA_SUFFIX.finditer(run_text):
+                            warnings.append(
+                                f"{prefix} slide {slide_no:02d}: code-style formula suffix `{match.group(0)}` "
+                                f"in `{shape_name}`"
+                            )
                     sizes = run_sizes(paragraph)
                     size = max(sizes) if sizes else 19.0
                     estimated = estimated_text_width_pt(stripped, size)

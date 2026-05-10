@@ -304,11 +304,20 @@ def main() -> int:
                 break
             continue
 
-        scan_cmd = [py, str(SCAN), str(png_dir), "--fail-on-warning"]
+        scan_cmd = [
+            py,
+            str(SCAN),
+            str(png_dir),
+            "--fail-on-warning",
+            "--blank-warn",
+            str(case.get("scan_blank_warn", 0.74)),
+            "--min-band-fraction",
+            str(case.get("scan_min_band_fraction", 0.10)),
+            "--body-blank-warn",
+            str(case.get("scan_body_blank_warn", 0.89)),
+        ]
         if case.get("ignore_edge_slides", True):
             scan_cmd.append("--ignore-edge-slides")
-        if "scan_blank_warn" in case:
-            scan_cmd.extend(["--blank-warn", str(case["scan_blank_warn"])])
         proc = run(scan_cmd, timeout=60)
         print(proc.stdout)
         if proc.returncode != 0:

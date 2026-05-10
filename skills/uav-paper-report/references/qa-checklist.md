@@ -11,8 +11,12 @@ Use this checklist before delivering a deck.
 - Public or uploaded PPTX assets have been sanitized with `scripts/sanitize_pptx_privacy.py`.
 - Privacy scan reports no personal names, editor metadata, notes slides, comments, custom properties, or visible presenter placeholders containing real names.
 - Multi-template public examples pass `scripts/run_template_matrix.py`; local template generalization cases pass `scripts/run_template_smoke.py` when testing new template families.
-- Template smoke rendered scans use strict blank-area thresholds: `--blank-warn 0.76 --min-band-fraction 0.14`, with first/last slides ignored only for cover/thanks pages.
+- Template smoke rendered scans use strict blank-area thresholds: `--blank-warn 0.74 --min-band-fraction 0.10 --body-blank-warn 0.89`, with first/last slides ignored only for cover/thanks pages.
+- Public regression example PPTX repairs are reproducible. If FoV-CBF, PRIMER, or SPOT example slides are moved to fix blank bands, picture scale, metric bands, or overlap warnings, update and rerun `scripts/densify_regression_examples.py` instead of keeping private one-off edits.
 - PPTX text audits use the template's declared profile. Do not judge a `classic-large` template with compact font thresholds, and do not loosen thresholds to pass a new deck.
+- PPTX text audits must cover bullet text, plain body boxes, native table cells, metric values, metric labels, metric notes, and native diagram labels. A deck can fail font QA even when the bullet hierarchy alone passes.
+- PPTX text audits must estimate rendered height for plain body boxes and metric notes. Treat the expanded rendered footprint as the collision box when checking nearby rules, figures, tables, formulas, and bottom margins.
+- PPTX text audits must warn on narrow body boxes that create avoidable 4-line wrapping or long-token orphan lines; fix layout or wording instead of accepting the wrap.
 - LibreOffice export uses the matrix/smoke export helper or equivalent short-path staging. The staged PPTX should be reserialized through `python-pptx` before export so package quirks are not mistaken for layout failures.
 
 ## Visual Review
@@ -31,13 +35,17 @@ Check the preview grid first, then individual risk slides.
 - No generator helper silently accepts `\n`, empty bullet paragraphs, empty table cells, or empty formula runs in body content.
 - No continuous bullet block has a gap larger than about one normal text line between paragraphs.
 - No slide uses empty paragraphs or standalone bullet markers to create vertical spacing.
+- No slide uses oversized paragraph `space_before` or `space_after` to imitate density; sparse pages must be fixed by moving/resizing regions or adding real native content.
 - Content slides do not leave more than about 20% empty area unless intentionally sparse.
 - No content slide has a large empty middle band between top content and bottom metrics/summary.
+- No content slide has a high body blank fraction after ignoring the cover/header/footer margins.
 - No content slide has a wide internal horizontal whitespace band that makes the page feel half-empty.
 - Figures are not stretched; tables are not squeezed.
+- Semantic two-column tables such as `符号/含义`, `变量/含义`, `对象/进入方式`, or `对象/约束` do not use equal-width columns; the explanation column is wider enough to avoid orphan characters and unnatural wrapping.
 - Figure boxes match the actual crop aspect ratio; no image appears tiny inside an oversized region.
 - Figure crops contain only the intended figure content; they do not include paper body text, full captions, page margins, or unrelated neighboring figures.
 - Architecture or pipeline crops that are truncated or caption-heavy have been redrawn as native PPT diagrams instead of inserted as compromised images.
+- Architecture or pipeline labels are native PPT text at about 14 pt or larger; no workflow labels are embedded as small raster text inside generated PNGs.
 - Images are not visually tiny inside oversized boxes. The displayed image should occupy the intended evidence region and match its source aspect ratio.
 - Image boxes are chosen from the actual crop aspect ratio, not copied from unrelated slides.
 - Image-heavy slides have enough adjacent interpretation text; if the interpretation cannot fit, the evidence must be split across slides.
@@ -47,12 +55,15 @@ Check the preview grid first, then individual risk slides.
 - Formula rows are aligned and evenly spaced.
 - Multi-line formulas have intentional continuation alignment and consistent font size.
 - Method section font size is consistent with other sections.
+- Method diagram labels are visually consistent with the deck hierarchy and are not smaller than table/body support text.
+- Tables, metric labels, and metric notes do not drop below the active profile's minimum font thresholds.
 - Paragraphs have bullets or clear markers.
 - First sentences in body areas are also formatted as bullets or labeled claims; no loose unformatted opening sentence.
 - Red/bold emphasis is sparse and meaningful.
 - Red emphasis is applied only to the decisive word, phrase, or number, not to a full explanatory paragraph.
 - Three-column layouts have balanced column heights; no single column wraps into the next horizontal region.
 - Slides do not mix vertical stacking and side-by-side reading paths without a visible separator.
+- Stress slides do not combine left body text, right metric/note rails, and a full-width bottom table in one page. Use a top-to-bottom stack or a clean left-right split.
 - Text regions were given rendered slack; no final text line touches a rule, image, table, formula, or bottom margin.
 
 ## Risk Slide Review
@@ -66,7 +77,8 @@ Open individual PNGs, not only the preview grid, for:
 - any slide where the crop was changed;
 - any slide where a shape-overlap checker previously failed.
 - any slide changed in this pass to fix blank area, text overlap, image overlap, or rule collision.
-- any slide flagged by `scan_rendered_slides.py` for high blank fraction, top/bottom blank, internal whitespace, or an empty body quadrant.
+- any slide changed by `densify_regression_examples.py`, especially SPOT background/method/result/summary pages with previous blank-band warnings.
+- any slide flagged by `scan_rendered_slides.py` for high blank fraction, high body blank fraction, top/bottom blank, internal whitespace, or an empty body quadrant.
 
 For each risk slide, verify the rendered PNG directly:
 
@@ -113,6 +125,7 @@ Before committing or uploading a skill package:
 - Formula sizes are visually consistent across method slides.
 - Formula text does not show code-style braces/underscores such as `p_{k+1}`, `L_clearance`, `J_path`, or `GSD_0` in the rendered PNG.
 - Formula tables do not show code-style labels such as `P_safe`, `u_safe`, `pi_theta`, `L_smooth`, `J_path`, `GSD_0`, or `Omega`; use display-style symbols and explain long names in the meaning column.
+- Formula meaning tables reserve most of the width for the meaning column; equal-width `符号/含义` tables are a layout defect even if the text technically fits inside the cell.
 - The PPTX audit fails visible math labels that match code-style underscore patterns; fix the source symbols rather than suppressing the audit.
 - Long formulas are split across slides or shortened with explanation.
 - Explanatory bullets say what each term means and why it matters.

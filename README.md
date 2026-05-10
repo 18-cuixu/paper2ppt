@@ -15,7 +15,9 @@
 - 新增 `run_template_matrix.py`，可批量审计、渲染和扫描多个论文示例与模板风格；新生成结果的导出和渲染扫描仍是硬门槛。
 - 新增 `run_template_smoke.py`，用合成压力页在多套本地 PPTX 模板上测试页面尺寸、母版占位符、宽图、窄图、表格、公式、长英文术语、局部大空白和重点强调。
 - 新增 `repair_pptx_layout.py`，用于发布前批量移除装饰 shape 的空文本体、统一模板 profile 下的正文字号，并可显式修复正文手动换行。
-- 公开回归矩阵已扩展到 8 个论文/模板组合，新增 FoV-CBF、PRIMER 和 SPOT 三个最近论文案例；公开示例均通过 PPTX 审计，已验证 PDF baseline 可用于 PNG 渲染和空白扫描 fallback。
+- 新增 `densify_regression_examples.py`，用于把严格扫描暴露出的回归样例空白带、图片过小、指标区断层和潜在重叠改成可复现的 PPTX 布局修复。
+- 公开回归矩阵已扩展到 8 个论文/模板组合，新增 FoV-CBF、PRIMER 和 SPOT 三个最近论文案例；最终公开矩阵已通过 PPTX 审计、LibreOffice 导出、PNG 渲染和严格空白扫描。
+- 本轮对公开矩阵做了多轮检查：先修公式页中部断层，再修 SPOT 潜在重叠与图文区域，最后修底部空白和脚本幂等重复叠加问题。
 - 本轮额外完成 6 套本地 PPTAgent 模板 × 5 篇近年 UAV 论文的 smoke 测试，30 个新生成用例均通过 PPTX 审计、LibreOffice 导出、PNG 渲染和渲染页扫描。
 - 渲染扫描新增局部空白块检测，可发现右下角/左下角等单个正文象限大面积空白的问题；smoke 生成器也改为只对关键词局部标红，并在正文页先铺统一白底遮盖母版示例文字，不再整段变红或露出模板里的 author/title/date。
 - 生成后必须按顺序完成：PPTX 审计、LibreOffice 导出、PNG 渲染、渲染页扫描和风险页人工检查。
@@ -73,9 +75,10 @@ paper2ppt/
 - 已形成可复用的 `python-pptx` scaffold，包括封面/结尾、正文项目符号、公式行、原生表格、流程图、图片裁剪和指标条。
 - 已支持多模板风格迁移的工作流：先读取用户模板或示例 deck，再按其版式节奏生成新论文汇报。
 - 已加入严格 PPTX 审计：空文本体、正文手动换行、异常段落间距、窄公式长行、内容重叠、字体层级漂移和越界 shape。
-- 已加入多模板回归矩阵，当前覆盖 8 个公开论文/模板组合；公开示例通过 PPTX 审计，渲染扫描可使用已验证 PDF baseline 复核。
+- 已加入多模板回归矩阵，当前覆盖 8 个公开论文/模板组合；本轮完整矩阵已通过 PPTX 审计、LibreOffice 导出、PNG 渲染和严格空白扫描。
 - 已加入模板 smoke 测试，当前用 5 篇近年 UAV 论文压力内容测试 6 套本地 PPTX 模板，覆盖 4:3、16:9、蓝色、红色、紫色、绿色、青色和带母版占位符的模板。
 - 已加入通用修复脚本 `repair_pptx_layout.py`，用于发布前统一清理空文本体、正文字号漂移和正文手动换行。
+- 已加入公开回归样例密度修复脚本 `densify_regression_examples.py`，用于复现 FoV-CBF、PRIMER、SPOT 示例中的空白带、图片区域和指标区布局修复。
 - 已加入隐私清理：发布前清理 PPTX 元数据、备注、批注和可见个人信息。
 
 ### 后续目标
@@ -154,6 +157,7 @@ skills/uav-paper-report/assets/scaffolds/requirements.txt
 - `scripts/run_template_matrix.py`：按 `assets/template-profiles/matrix.json` 批量测试多论文、多模板示例。
 - `scripts/run_template_smoke.py`：用压力论文内容在多套本地 PPTX 模板上批量生成、导出、渲染和扫描，用于验证模板泛化性。
 - `scripts/repair_pptx_layout.py`：发布前批量修复空文本体、模板 profile 下的正文字号漂移和正文手动换行。
+- `scripts/densify_regression_examples.py`：可重复修复公开回归示例中的空白带、图片占位过小、指标区断层和幂等叠加问题。
 - `scripts/check_dependencies.py`：检查基础依赖。
 
 上传前建议执行：
@@ -189,7 +193,9 @@ python .\skills\uav-paper-report\scripts\sanitize_pptx_privacy.py --check-only -
 - Added `run_template_matrix.py` for batch audit, render, and rendered-slide scan across multiple paper/template examples. New generated decks still fail hard on export or scan defects.
 - Added `run_template_smoke.py` for local PPTX template smoke tests covering slide size, master placeholders, wide figures, tall figures, tables, formula rows, long English terms, local blank quadrants, and restrained emphasis.
 - Added `repair_pptx_layout.py` for pre-publication cleanup of empty decorative text bodies, body font drift within a selected template profile, and explicit body newline fixes.
-- Expanded the public regression matrix to 8 paper/template combinations, adding recent FoV-CBF, PRIMER, and SPOT paper examples. Public examples pass PPTX audit; verified PDF baselines are available for PNG rendering and blank-area scan fallback.
+- Added `densify_regression_examples.py` to make strict-scan repairs reproducible for public regression examples with blank bands, undersized figures, broken metric bands, or potential overlaps.
+- Expanded the public regression matrix to 8 paper/template combinations, adding recent FoV-CBF, PRIMER, and SPOT paper examples. The final public matrix now passes PPTX audit, LibreOffice export, PNG rendering, and strict blank-area scan.
+- This pass ran multiple QA rounds over the public matrix: formula-page middle bands, SPOT potential overlaps, image/text regions, bottom blank areas, and idempotent repair behavior were all checked and fixed.
 - This update also ran 6 local PPTAgent templates × 5 recent UAV papers through smoke generation. All 30 newly generated cases passed PPTX audit, LibreOffice export, PNG rendering, and rendered-slide scan.
 - Rendered-slide scanning now detects large empty body quadrants, and the smoke generator applies red emphasis only to specific keywords while covering master-sample text such as author/title/date on generated body slides.
 - Each generated deck should pass, in order: PPTX audit, LibreOffice export, PNG rendering, rendered-slide scan, and manual risk-slide inspection.
@@ -247,9 +253,10 @@ paper2ppt/
 - Built reusable `python-pptx` scaffolds for covers, closing slides, bullet hierarchy, formula rows, native tables, process diagrams, figure crops, and metric rows.
 - Established a multi-template workflow: inspect the user template or example deck first, then generate a new paper report following its visual rhythm.
 - Added strict PPTX auditing for empty text bodies, manual body newlines, abnormal paragraph spacing, long formula rows in narrow boxes, content overlap, font hierarchy drift, and out-of-bounds shapes.
-- Added a public multi-template regression matrix covering 8 paper/template combinations. The public examples pass PPTX audit, and verified PDF baselines can be used for PNG rendering and blank-area scan fallback.
+- Added a public multi-template regression matrix covering 8 paper/template combinations. This pass verifies the public examples through PPTX audit, LibreOffice export, PNG rendering, and strict blank-area scan.
 - Added local template smoke testing across 5 recent UAV papers and 6 PPTX templates, covering 4:3, 16:9, blue, red, purple, green, cyan, and master-placeholder-heavy templates.
 - Added `repair_pptx_layout.py` for pre-publication cleanup of empty text bodies, body font drift, and manual body newlines.
+- Added `densify_regression_examples.py` for reproducible density repairs on FoV-CBF, PRIMER, and SPOT public regression decks.
 - Added privacy sanitization for PPTX metadata, notes, comments, and visible personal information before public release.
 
 ### Roadmap
@@ -329,6 +336,7 @@ This skill focuses on the following issues:
 - `scripts/run_template_matrix.py`: runs the registered multi-paper, multi-template regression matrix from `assets/template-profiles/matrix.json`.
 - `scripts/run_template_smoke.py`: generates, exports, renders, and scans stress decks across local PPTX templates to validate template generalization.
 - `scripts/repair_pptx_layout.py`: batch-repairs empty text bodies, profile-based body font drift, and manual body newlines before publishing examples.
+- `scripts/densify_regression_examples.py`: repeatably repairs blank bands, undersized figure regions, broken metric bands, and idempotency issues in public regression examples.
 - `scripts/check_dependencies.py`: checks basic runtime dependencies.
 
 Recommended pre-upload commands:

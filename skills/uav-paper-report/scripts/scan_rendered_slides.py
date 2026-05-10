@@ -35,6 +35,21 @@ def body_content_bbox(img: Image.Image, threshold: int = 248):
     return left, top + y0, right, top + y1
 
 
+def body_white_fraction(img: Image.Image, threshold: int = 248) -> float:
+    width, height = img.size
+    top = int(height * 0.16)
+    bottom = int(height * 0.92)
+    left = int(width * 0.06)
+    right = int(width * 0.94)
+    if bottom <= top or right <= left:
+        return 1.0
+    body = img.crop((left, top, right, bottom)).convert("L")
+    hist = body.histogram()
+    white = sum(hist[threshold:])
+    total = body.width * body.height
+    return white / total if total else 1.0
+
+
 def edge_density(img: Image.Image) -> float:
     gray = img.convert("L")
     shifted = ImageChops.offset(gray, 1, 0)
@@ -136,10 +151,18 @@ def dense_text_bands(img: Image.Image, threshold: int = 248) -> list[str]:
     return warnings
 
 
-def scan(path: Path, blank_warn: float, edge_warn: float, dense_band: bool, min_band_fraction: float) -> list[str]:
+def scan(
+    path: Path,
+    blank_warn: float,
+    edge_warn: float,
+    dense_band: bool,
+    min_band_fraction: float,
+    body_blank_warn: float | None,
+) -> list[str]:
     img = Image.open(path).convert("RGB")
     warnings: list[str] = []
     wf = white_fraction(img)
+    body_wf = body_white_fraction(img)
     ed = edge_density(img)
     bbox = nonwhite_bbox(img)
     body_bbox = body_content_bbox(img)
@@ -152,6 +175,8 @@ def scan(path: Path, blank_warn: float, edge_warn: float, dense_band: bool, min_
         sparse_body = body_span < 0.46 or body_width < 0.52
     if wf > blank_warn and sparse_body:
         warnings.append(f"{path.name}: high white/blank fraction {wf:.2%}")
+    if body_blank_warn is not None and body_wf > body_blank_warn:
+        warnings.append(f"{path.name}: high body blank fraction {body_wf:.2%}")
     if ed > edge_warn:
         warnings.append(f"{path.name}: high edge density {ed:.3f}; inspect for crowding/overlap")
     if bbox is None:
@@ -188,6 +213,11 @@ def main() -> int:
         help="Minimum slide-height fraction for an internal blank band warning.",
     )
     parser.add_argument(
+        "--body-blank-warn",
+        type=float,
+        help="Warn when the body crop's white/blank fraction exceeds this value.",
+    )
+    parser.add_argument(
         "--ignore-edge-slides",
         action="store_true",
         help="Skip the first and last rendered slides, normally cover/thanks pages.",
@@ -204,7 +234,16 @@ def main() -> int:
     for index, path in enumerate(paths):
         if args.ignore_edge_slides and index in (0, len(paths) - 1):
             continue
-        warnings.extend(scan(path, args.blank_warn, args.edge_warn, args.dense_band, args.min_band_fraction))
+        warnings.extend(
+            scan(
+                path,
+                args.blank_warn,
+                args.edge_warn,
+                args.dense_band,
+                args.min_band_fraction,
+                args.body_blank_warn,
+            )
+        )
 
     if warnings:
         print("Rendered slide scan warnings:")

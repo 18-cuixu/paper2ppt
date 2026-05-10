@@ -325,10 +325,13 @@ def metric_row(slide, items: list[tuple[str, str, str]], left: float, top: float
     for idx, (value, name, note) in enumerate(items):
         x = left + idx * col_w
         value_box = add_box(slide, x, top, col_w - 0.12, 0.43)
+        set_shape_name(value_box, f"METRIC_VALUE_{idx}")
         plain(value_box, value, size + 5, bold=True, color=RED, align=PP_ALIGN.CENTER)
         name_box = add_box(slide, x, top + 0.44, col_w - 0.12, 0.30)
+        set_shape_name(name_box, f"METRIC_LABEL_{idx}")
         plain(name_box, name, size - 2.0, bold=True, color=GRAY, align=PP_ALIGN.CENTER)
         note_box = add_box(slide, x, top + 0.77, col_w - 0.12, 0.36)
+        set_shape_name(note_box, f"METRIC_NOTE_{idx}")
         plain(note_box, note, size - 3.6, color=BLACK, align=PP_ALIGN.CENTER)
 
 

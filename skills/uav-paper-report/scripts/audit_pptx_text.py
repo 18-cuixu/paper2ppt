@@ -88,6 +88,12 @@ INTENTIONAL_BREAK_SHAPE_NAMES = ("DIAG_",)
 PROFILE_PRESETS = {
     "compact": {
         "body_min": 16.0,
+        "plain_body_min": 14.0,
+        "table_min": 11.6,
+        "metric_value_min": 14.8,
+        "metric_label_min": 11.4,
+        "metric_note_min": 14.0,
+        "diagram_label_min": 13.8,
         "main_min": 17.6,
         "main_max": 18.8,
         "secondary_min": 16.4,
@@ -100,6 +106,12 @@ PROFILE_PRESETS = {
     },
     "dense-visual": {
         "body_min": 15.8,
+        "plain_body_min": 14.0,
+        "table_min": 11.6,
+        "metric_value_min": 14.8,
+        "metric_label_min": 11.4,
+        "metric_note_min": 14.0,
+        "diagram_label_min": 13.8,
         "main_min": 17.6,
         "main_max": 19.1,
         "secondary_min": 15.8,
@@ -112,6 +124,12 @@ PROFILE_PRESETS = {
     },
     "classic-large": {
         "body_min": 16.0,
+        "plain_body_min": 14.5,
+        "table_min": 12.0,
+        "metric_value_min": 15.4,
+        "metric_label_min": 11.8,
+        "metric_note_min": 14.5,
+        "diagram_label_min": 13.8,
         "main_min": 18.0,
         "main_max": 21.2,
         "secondary_min": 16.8,
@@ -204,6 +222,41 @@ def iter_text_bodies(pptx: Path):
                 yield slide_no, shape_name, texts, paragraphs
 
 
+def iter_text_boxes(pptx: Path):
+    with zipfile.ZipFile(pptx) as zf:
+        for name in slide_names(zf):
+            slide_no = int(re.search(r"slide(\d+)\.xml", name).group(1))
+            root = ET.fromstring(zf.read(name))
+            for shape in root.findall(".//p:sp", NS):
+                name_node = shape.find("./p:nvSpPr/p:cNvPr", NS)
+                shape_name = name_node.get("name", "") if name_node is not None else ""
+                if shape_name.startswith("MATH_"):
+                    continue
+                text_body = shape.find("./p:txBody", NS)
+                xfrm = shape.find(".//a:xfrm", NS)
+                if text_body is None or xfrm is None:
+                    continue
+                off = xfrm.find("./a:off", NS)
+                ext = xfrm.find("./a:ext", NS)
+                if off is None or ext is None:
+                    continue
+                paragraphs = text_body.findall("./a:p", NS)
+                texts = [
+                    "".join(node.text or "" for node in paragraph.findall(".//a:t", NS))
+                    for paragraph in paragraphs
+                ]
+                yield (
+                    slide_no,
+                    shape_name,
+                    int(off.get("x", "0")) / EMU_PER_INCH,
+                    int(off.get("y", "0")) / EMU_PER_INCH,
+                    int(ext.get("cx", "0")) / EMU_PER_INCH,
+                    int(ext.get("cy", "0")) / EMU_PER_INCH,
+                    texts,
+                    paragraphs,
+                )
+
+
 def iter_math_text_bodies(pptx: Path):
     with zipfile.ZipFile(pptx) as zf:
         for name in slide_names(zf):
@@ -253,6 +306,60 @@ def iter_shape_bounds(pptx: Path):
                 w = int(ext.get("cx", "0"))
                 h = int(ext.get("cy", "0"))
                 yield slide_no, shape_name, left, top, w, h, width, height
+
+
+def iter_semantic_table_layouts(pptx: Path):
+    semantic_headers = {
+        ("符号", "含义"): 0.58,
+        ("变量", "含义"): 0.58,
+        ("对象", "进入方式"): 0.56,
+        ("对象", "约束"): 0.56,
+    }
+    with zipfile.ZipFile(pptx) as zf:
+        for name in slide_names(zf):
+            slide_no = int(re.search(r"slide(\d+)\.xml", name).group(1))
+            root = ET.fromstring(zf.read(name))
+            for frame in root.findall(".//p:graphicFrame", NS):
+                name_node = frame.find(".//p:cNvPr", NS)
+                shape_name = name_node.get("name", "") if name_node is not None else ""
+                table = frame.find(".//a:tbl", NS)
+                if table is None:
+                    continue
+                rows = table.findall("./a:tr", NS)
+                if not rows:
+                    continue
+                header_cells = rows[0].findall("./a:tc", NS)
+                headers = tuple("".join(t.text or "" for t in cell.findall(".//a:t", NS)).strip() for cell in header_cells)
+                min_second_ratio = semantic_headers.get(headers)
+                if min_second_ratio is None:
+                    continue
+                widths = []
+                for col in table.findall("./a:tblGrid/a:gridCol", NS):
+                    raw = col.get("w")
+                    if raw and raw.isdigit():
+                        widths.append(int(raw))
+                if len(widths) != len(headers) or sum(widths) <= 0:
+                    continue
+                ratios = [w / sum(widths) for w in widths]
+                yield slide_no, shape_name, headers, ratios, min_second_ratio
+
+
+def iter_table_paragraphs(pptx: Path):
+    with zipfile.ZipFile(pptx) as zf:
+        for name in slide_names(zf):
+            slide_no = int(re.search(r"slide(\d+)\.xml", name).group(1))
+            root = ET.fromstring(zf.read(name))
+            for frame in root.findall(".//p:graphicFrame", NS):
+                name_node = frame.find(".//p:cNvPr", NS)
+                shape_name = name_node.get("name", "") if name_node is not None else ""
+                table = frame.find(".//a:tbl", NS)
+                if table is None:
+                    continue
+                for row_idx, row in enumerate(table.findall("./a:tr", NS), start=1):
+                    for col_idx, cell in enumerate(row.findall("./a:tc", NS), start=1):
+                        for paragraph in cell.findall(".//a:p", NS):
+                            text = "".join(node.text or "" for node in paragraph.findall(".//a:t", NS))
+                            yield slide_no, shape_name, row_idx, col_idx, text, paragraph
 
 
 def resolve_relationship_target(source: str, target: str) -> str:
@@ -369,6 +476,20 @@ def run_sizes(paragraph) -> list[float]:
     return sizes
 
 
+def shape_text_role(shape_name: str) -> str | None:
+    if shape_name.startswith("METRIC_VALUE_"):
+        return "metric_value"
+    if shape_name.startswith("METRIC_LABEL_"):
+        return "metric_label"
+    if shape_name.startswith("METRIC_NOTE_"):
+        return "metric_note"
+    if shape_name.startswith("DIAG_"):
+        return "diagram_label"
+    if shape_name.startswith(("BODY_", "TEXT_", "NOTE_", "CALLOUT_")):
+        return "plain_body"
+    return None
+
+
 def paragraph_spacing_pt(paragraph) -> tuple[float, float]:
     ppr = paragraph.find("./a:pPr", NS)
     if ppr is None:
@@ -411,6 +532,66 @@ def estimated_text_width_pt(text: str, size: float) -> float:
     return units * size
 
 
+def paragraph_line_count(text: str, sizes: list[float], width_in: float) -> tuple[int, bool]:
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    if not cleaned:
+        return 0, False
+    size = max(sizes) if sizes else 17.0
+    available_pt = max(12.0, (width_in - 0.10) * PT_PER_INCH)
+    estimated_lines = max(1, math.ceil(estimated_text_width_pt(cleaned, size) / available_pt))
+    tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9+\-/_.]*|[^\s]", cleaned)
+    has_orphan = any(estimated_text_width_pt(token, size) > available_pt * 0.82 for token in tokens)
+    return estimated_lines, has_orphan
+
+
+def text_width_overflow(text: str, sizes: list[float], width_in: float, factor: float = 0.96) -> bool:
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    if not cleaned:
+        return False
+    size = max(sizes) if sizes else 12.0
+    available_pt = max(12.0, (width_in - 0.10) * PT_PER_INCH)
+    return estimated_text_width_pt(cleaned, size) > available_pt * factor
+
+
+def diagram_label_overflow(text: str, sizes: list[float], width_in: float, height_in: float) -> bool:
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    if not cleaned:
+        return False
+    size = max(sizes) if sizes else 12.0
+    line_count, orphan_risk = paragraph_line_count(cleaned, sizes, width_in)
+    if orphan_risk:
+        return True
+    if line_count <= 1:
+        # Diagram nodes often contain compact math or mixed Chinese/English labels.
+        # The width estimator is intentionally conservative, so keep a small
+        # tolerance for single-line labels while still failing true orphan tokens.
+        return text_width_overflow(cleaned, sizes, width_in, factor=1.06)
+    if line_count > 2:
+        return True
+    estimated_height = line_count * size * 1.10 / PT_PER_INCH + 0.08
+    return estimated_height > max(0.05, height_in * 0.88)
+
+
+def estimated_text_height_in(texts: list[str], paragraphs, width_in: float) -> tuple[float, int, bool]:
+    total_pt = 0.0
+    max_lines = 0
+    orphan_risk = False
+    for text, paragraph in zip(texts, paragraphs):
+        stripped = text.strip()
+        if not stripped:
+            continue
+        sizes = run_sizes(paragraph)
+        size = max(sizes) if sizes else 17.0
+        line_count, has_orphan = paragraph_line_count(stripped, sizes, width_in)
+        space_before, space_after = paragraph_spacing_pt(paragraph)
+        total_pt += space_before + line_count * size * 1.10 + min(space_after, 3.0)
+        max_lines = max(max_lines, line_count)
+        orphan_risk = orphan_risk or has_orphan
+    # PowerPoint text boxes include top/bottom inner margins even when the XML
+    # shape looks tall enough; keep a conservative rendered slack allowance.
+    return total_pt / PT_PER_INCH + 0.08, max_lines, orphan_risk
+
+
 def range_text(values: list[float]) -> str:
     return f"{min(values):.1f}-{max(values):.1f} pt"
 
@@ -448,7 +629,11 @@ def should_check_overlap(name: str, box: tuple[float, float, float, float], slid
 def allowed_overlap(name_a: str, name_b: str) -> bool:
     if name_a.startswith("METRIC_BOX_") and name_b.startswith(("METRIC_VALUE_", "METRIC_LABEL_")):
         return True
+    if name_a.startswith("METRIC_BOX_") and name_b.startswith("METRIC_NOTE_"):
+        return True
     if name_b.startswith("METRIC_BOX_") and name_a.startswith(("METRIC_VALUE_", "METRIC_LABEL_")):
+        return True
+    if name_b.startswith("METRIC_BOX_") and name_a.startswith("METRIC_NOTE_"):
         return True
     return False
 
@@ -459,6 +644,12 @@ def main() -> int:
     parser.add_argument("--fail-on-warning", action="store_true")
     parser.add_argument("--body-min", type=float, default=16.0)
     parser.add_argument("--body-max", type=float, default=22.0)
+    parser.add_argument("--plain-body-min", type=float, default=14.0)
+    parser.add_argument("--table-min", type=float, default=11.6)
+    parser.add_argument("--metric-value-min", type=float, default=14.8)
+    parser.add_argument("--metric-label-min", type=float, default=11.4)
+    parser.add_argument("--metric-note-min", type=float, default=14.0)
+    parser.add_argument("--diagram-label-min", type=float, default=13.8)
     parser.add_argument(
         "--strict-body-hierarchy",
         action="store_true",
@@ -481,6 +672,9 @@ def main() -> int:
     parser.add_argument("--max-body-space-after", type=float, default=3.0)
     parser.add_argument("--max-body-space-before", type=float, default=0.5)
     parser.add_argument("--max-formula-width-factor", type=float, default=1.05)
+    parser.add_argument("--max-text-height-fill", type=float, default=0.94)
+    parser.add_argument("--max-body-lines", type=int, default=3)
+    parser.add_argument("--min-wide-text-width", type=float, default=5.4)
     parser.add_argument(
         "--max-picture-ratio-drift",
         type=float,
@@ -556,6 +750,22 @@ def main() -> int:
                 if BODY_LINE_BREAK.search(text) and slide_no not in (1, last_slide):
                     warnings.append(f"{prefix} slide {slide_no:02d}: manual line break inside body text")
                 level = bullet_level(stripped)
+                role = shape_text_role(shape_name)
+                if role is not None:
+                    sizes = run_sizes(paragraph)
+                    if sizes:
+                        min_size = min(sizes)
+                        threshold = getattr(args, f"{role}_min")
+                        if min_size < threshold:
+                            role_label = role.replace("_", " ")
+                            warnings.append(
+                                f"{prefix} slide {slide_no:02d}: {role_label} font too small "
+                                f"({min_size:.1f} pt, expected at least {threshold:.1f} pt) in `{shape_name}`"
+                            )
+                    if args.strict_body_hierarchy and role == "plain_body" and level is None:
+                        warnings.append(
+                            f"{prefix} slide {slide_no:02d}: body paragraph lacks bullet marker in `{shape_name}`"
+                        )
                 if level is not None:
                     sizes = run_sizes(paragraph)
                     if not sizes:
@@ -579,6 +789,80 @@ def main() -> int:
                                 f"{prefix} slide {slide_no:02d}: mixed font sizes inside one bullet "
                                 f"({range_text(sizes)})"
                             )
+
+        if args.strict_body_hierarchy:
+            for slide_no, shape_name, row_idx, col_idx, text, paragraph in iter_table_paragraphs(pptx):
+                stripped = text.strip()
+                if not stripped:
+                    continue
+                sizes = run_sizes(paragraph)
+                if not sizes:
+                    continue
+                min_size = min(sizes)
+                if min_size < args.table_min:
+                    warnings.append(
+                        f"{prefix} slide {slide_no:02d}: table text font too small "
+                        f"({min_size:.1f} pt, expected at least {args.table_min:.1f} pt) "
+                        f"in `{shape_name}` cell R{row_idx}C{col_idx}"
+                    )
+
+        text_overflow_boxes: dict[tuple[int, str], tuple[float, tuple[float, float, float, float]]] = {}
+        if args.strict_body_hierarchy:
+            for slide_no, shape_name, left, top, width_in, height_in, texts, paragraphs in iter_text_boxes(pptx):
+                role = shape_text_role(shape_name)
+                if role is None or slide_no in (1, last_slide):
+                    continue
+                if role not in {"plain_body", "metric_note"}:
+                    continue
+                if not any(text.strip() for text in texts):
+                    continue
+                estimated_height, max_lines, orphan_risk = estimated_text_height_in(texts, paragraphs, width_in)
+                fill_ratio = estimated_height / max(height_in, 0.01)
+                text_overflow_boxes[(slide_no, shape_name)] = (
+                    estimated_height,
+                    (left, top, left + width_in, max(top + height_in, top + estimated_height)),
+                )
+                if fill_ratio > args.max_text_height_fill:
+                    warnings.append(
+                        f"{prefix} slide {slide_no:02d}: text has too little rendered slack in `{shape_name}` "
+                        f"({estimated_height:.2f} in estimated for {height_in:.2f} in box)"
+                    )
+                if (
+                    role == "plain_body"
+                    and width_in < args.min_wide_text_width
+                    and max_lines > args.max_body_lines
+                ):
+                    warnings.append(
+                        f"{prefix} slide {slide_no:02d}: narrow body box causes avoidable wrapping in `{shape_name}` "
+                        f"({width_in:.2f} in wide, {max_lines} estimated lines)"
+                    )
+                if orphan_risk:
+                    warnings.append(
+                        f"{prefix} slide {slide_no:02d}: long token may create orphan/wrapped line in `{shape_name}`"
+                    )
+
+        if args.strict_body_hierarchy:
+            for slide_no, shape_name, left, top, width_in, height_in, texts, paragraphs in iter_text_boxes(pptx):
+                role = shape_text_role(shape_name)
+                if role != "diagram_label" or slide_no in (1, last_slide):
+                    continue
+                for text, paragraph in zip(texts, paragraphs):
+                    stripped = text.strip()
+                    if not stripped:
+                        continue
+                    sizes = run_sizes(paragraph)
+                    if not sizes:
+                        continue
+                    min_size = min(sizes)
+                    if min_size < args.diagram_label_min:
+                        warnings.append(
+                            f"{prefix} slide {slide_no:02d}: diagram label font too small "
+                            f"({min_size:.1f} pt, expected at least {args.diagram_label_min:.1f} pt) in `{shape_name}`"
+                        )
+                    if diagram_label_overflow(stripped, sizes, width_in, height_in):
+                        warnings.append(
+                            f"{prefix} slide {slide_no:02d}: diagram label may overflow its node in `{shape_name}`"
+                        )
 
         if args.strict_body_hierarchy:
             for slide_no, shape_name, texts, paragraphs, width_in in iter_math_text_bodies(pptx):
@@ -610,9 +894,20 @@ def main() -> int:
                 warnings.append(f"{prefix} slide {slide_no:02d}: shape `{shape_name}` exceeds slide bounds")
 
         if args.strict_body_hierarchy:
+            for slide_no, shape_name, headers, ratios, min_second_ratio in iter_semantic_table_layouts(pptx):
+                if len(ratios) >= 2 and ratios[1] < min_second_ratio:
+                    warnings.append(
+                        f"{prefix} slide {slide_no:02d}: semantic table `{shape_name}` has narrow meaning column "
+                        f"({headers[1]} {ratios[1]:.0%}, expected at least {min_second_ratio:.0%})"
+                    )
+
+        if args.strict_body_hierarchy:
             slide_items: dict[int, list[tuple[str, tuple[float, float, float, float]]]] = {}
             for slide_no, shape_name, left, top, right, bottom, slide_w, slide_h in iter_content_bounds(pptx):
                 box = (left, top, right, bottom)
+                overflow = text_overflow_boxes.get((slide_no, shape_name))
+                if overflow is not None:
+                    box = overflow[1]
                 if should_check_overlap(shape_name, box, slide_h):
                     slide_items.setdefault(slide_no, []).append((shape_name, box))
             for slide_no, items in slide_items.items():

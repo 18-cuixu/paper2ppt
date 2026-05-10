@@ -17,9 +17,36 @@ for prefix, uri in NS.items():
 
 
 PROFILE_TARGETS = {
-    "compact": {"main": 18.2, "secondary": 16.8, "tertiary": 16.2},
-    "dense-visual": {"main": 18.2, "secondary": 16.8, "tertiary": 16.2},
-    "classic-large": {"main": 19.2, "secondary": 18.4, "tertiary": 17.0},
+    "compact": {
+        "main": 18.2,
+        "secondary": 16.8,
+        "tertiary": 16.2,
+        "plain_body": 16.8,
+        "table": 11.8,
+        "metric_value": 15.6,
+        "metric_label": 11.8,
+        "metric_note": 14.5,
+    },
+    "dense-visual": {
+        "main": 18.2,
+        "secondary": 16.8,
+        "tertiary": 16.2,
+        "plain_body": 16.8,
+        "table": 11.8,
+        "metric_value": 15.6,
+        "metric_label": 11.8,
+        "metric_note": 14.5,
+    },
+    "classic-large": {
+        "main": 19.2,
+        "secondary": 18.4,
+        "tertiary": 17.0,
+        "plain_body": 17.0,
+        "table": 12.4,
+        "metric_value": 16.4,
+        "metric_label": 12.2,
+        "metric_note": 14.8,
+    },
 }
 
 BULLET_LEVELS = {
@@ -110,6 +137,18 @@ def bullet_level(text: str) -> str | None:
     return BULLET_LEVELS.get(stripped[0])
 
 
+def shape_text_role(shape_name: str) -> str | None:
+    if shape_name.startswith("METRIC_VALUE_"):
+        return "metric_value"
+    if shape_name.startswith("METRIC_LABEL_"):
+        return "metric_label"
+    if shape_name.startswith("METRIC_NOTE_"):
+        return "metric_note"
+    if shape_name.startswith(("BODY_", "TEXT_", "NOTE_", "CALLOUT_")):
+        return "plain_body"
+    return None
+
+
 def set_typeface(rpr: ET.Element, font: str) -> None:
     for tag in ("latin", "ea", "cs"):
         qname = f"{{{NS['a']}}}{tag}"
@@ -147,6 +186,19 @@ def normalize_paragraph(paragraph: ET.Element, level: str, size_pt: float, font:
         set_typeface(end, font)
         changed = changed or before != ET.tostring(end, encoding="unicode")
     return changed
+
+
+def normalize_table_font(root: ET.Element, size_pt: float, font: str) -> int:
+    changes = 0
+    for frame in root.findall(".//p:graphicFrame", NS):
+        table = frame.find(".//a:tbl", NS)
+        if table is None:
+            continue
+        for paragraph in table.findall(".//a:p", NS):
+            text = "".join(node.text or "" for node in paragraph.findall(".//a:t", NS))
+            if text.strip() and normalize_paragraph(paragraph, "table", size_pt, font):
+                changes += 1
+    return changes
 
 
 def display_math_label(raw: str) -> str:
@@ -190,6 +242,8 @@ def repair_slide(
     root = ET.fromstring(xml)
     changes = 0
     for shape in root.findall(".//p:sp", NS):
+        name_node = shape.find("./p:nvSpPr/p:cNvPr", NS)
+        shape_name = name_node.get("name", "") if name_node is not None else ""
         text_body = shape.find("./p:txBody", NS)
         if text_body is None:
             continue
@@ -216,11 +270,17 @@ def repair_slide(
             level = bullet_level(text)
             if level and normalize_paragraph(paragraph, level, targets[level], font):
                 changes += 1
+                continue
+            role = shape_text_role(shape_name)
+            if role and text.strip() and normalize_paragraph(paragraph, role, targets[role], font):
+                changes += 1
     if fix_math_labels:
         for frame in root.findall(".//p:graphicFrame", NS):
             for paragraph in frame.findall(".//a:p", NS):
                 if repair_math_labels(paragraph):
                     changes += 1
+    if not only_math_labels:
+        changes += normalize_table_font(root, targets["table"], font)
     return ET.tostring(root, encoding="utf-8", xml_declaration=True), changes
 
 
